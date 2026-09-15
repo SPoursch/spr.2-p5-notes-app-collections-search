@@ -34,11 +34,51 @@ Stores each note document. Verified against the Supabase dashboard.
 | `id` | `uuid` | `gen_random_uuid()` | no | Primary key |
 | `title` | `text` | — | yes | Note title |
 | `body` | `text` | — | yes | Note content |
-| `created_at` | `timestamptz` | `now()` | yes | Set by the database on insert |
-| `updated_at` | `timestamptz` | — | yes | No default and no trigger — the application must set this on every update |
+| `created_at` | `timestamptz` | `now()` | no | Set by the database on insert |
+| `updated_at` | `timestamptz` | — | yes | Null until the first update; set by the `notes_set_updated_at` trigger |
 
 This satisfies core requirement 2, which asks for a `notes` table storing at
 minimum `id`, `title`, `body`, `created_at` and `updated_at`.
+
+### Timestamp ownership
+
+Postgres owns both timestamps. The application never writes either one.
+
+- `created_at` is `not null` with a `now()` default, set on insert.
+- `updated_at` is null until the row is first updated. A `before update` trigger
+  sets it to `now()`, so a null value means "never edited" and both timestamps
+  come from the same clock.
+
+```sql
+create or replace function public.notes_set_updated_at()
+returns trigger
+language plpgsql
+as $$
+begin
+  new.updated_at := now();
+  return new;
+end;
+$$;
+
+create trigger notes_set_updated_at
+  before update on public.notes
+  for each row
+  execute function public.notes_set_updated_at();
+```
+
+An earlier revision of `app/lib/db.ts` wrote `updated_at` from the application
+on both insert and update. That put the application clock and the database clock
+into the same row, and because `updated_at` was then populated at creation time
+its presence no longer indicated an edit — so the UI had to compare the two
+timestamps against a two-second tolerance to guess. That comparison was wrong in
+both skew directions: a fast application clock labelled every new note "Edited",
+a slow one labelled real edits "Created". Moving both timestamps onto the
+database clock removes the comparison entirely.
+
+When this change was applied, `updated_at` was set back to null for all existing
+rows. Those were Part 5 CRUD test notes and are deliberately treated as never
+edited; the old column value did not distinguish edited from unedited rows, so
+it carried nothing worth preserving.
 
 ## Row Level Security
 

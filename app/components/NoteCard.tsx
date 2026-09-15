@@ -39,64 +39,18 @@ function formatTimestamp(value: string | null): string | null {
   }).format(date)
 }
 
-/**
- * Milliseconds by which `updated_at` must exceed `created_at` before the note
- * counts as edited.
- *
- * The two values come from different clocks — `created_at` from the database
- * default, `updated_at` from the application (see app/lib/db.ts) — so an exact
- * comparison would report a phantom edit whenever those clocks disagree by a
- * few milliseconds. A short tolerance absorbs that skew; anything longer is a
- * real edit, since edits are human actions.
- */
-const EDIT_THRESHOLD_MS = 2000
-
-/**
- * Reports whether a note has actually been edited since it was created.
- *
- * `updated_at` is written on create as well as on update, so its presence
- * alone proves nothing: every note would claim to have been edited the moment
- * it was created. The timestamps have to be compared instead.
- *
- * With no usable `created_at` there is nothing to compare against, so the sole
- * remaining timestamp is reported as an edit rather than invented as a
- * creation time.
- */
-function wasEdited(createdAt: string | null, updatedAt: string | null): boolean {
-  if (!updatedAt) {
-    return false
-  }
-
-  const updated = new Date(updatedAt).getTime()
-
-  if (Number.isNaN(updated)) {
-    return false
-  }
-
-  if (!createdAt) {
-    return true
-  }
-
-  const created = new Date(createdAt).getTime()
-
-  if (Number.isNaN(created)) {
-    return true
-  }
-
-  return updated - created > EDIT_THRESHOLD_MS
-}
-
 export function NoteCard({ note }: { note: Note }) {
   const title = displayTitle(note.title)
   const body = note.body?.trim() ?? ''
+  // `updated_at` is null until the note is first edited (a database trigger
+  // sets it), so its presence alone identifies an edited note.
   const edited = formatTimestamp(note.updated_at)
   const created = formatTimestamp(note.created_at)
-  const timestampLabel =
-    wasEdited(note.created_at, note.updated_at) && edited
-      ? `Edited ${edited}`
-      : created
-        ? `Created ${created}`
-        : null
+  const timestampLabel = edited
+    ? `Edited ${edited}`
+    : created
+      ? `Created ${created}`
+      : null
 
   return (
     <article className="rounded-lg border border-black/10 p-4 dark:border-white/15">

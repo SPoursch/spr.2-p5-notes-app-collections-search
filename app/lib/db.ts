@@ -23,14 +23,15 @@ const NOTES_TABLE = 'notes'
  * A row of the `notes` table, matching the schema verified in
  * docs/supabase-schema.md.
  *
- * Every column except `id` is nullable in the database, so callers must handle
- * null titles, bodies and timestamps rather than assuming strings.
+ * `created_at` is `not null` with a database default. `updated_at` is null
+ * until the row is first updated, when a database trigger sets it — so null
+ * means "never edited". Titles and bodies are independently optional.
  */
 export type Note = {
   id: string
   title: string | null
   body: string | null
-  created_at: string | null
+  created_at: string
   updated_at: string | null
 }
 
@@ -63,21 +64,10 @@ export class NotesDatabaseError extends Error {
 }
 
 /**
- * `updated_at` has no database default and no trigger (see
- * docs/supabase-schema.md), so the application is solely responsible for it.
- * It is set on create as well as on update, so the column is never null for
- * rows this module writes.
- */
-function nowIso(): string {
-  return new Date().toISOString()
-}
-
-/**
  * Lists notes, newest first.
  *
- * Ordered by `created_at` rather than `updated_at` because rows created outside
- * this module may have a null `updated_at`. `nullsFirst: false` keeps any row
- * with a null timestamp at the end instead of the top.
+ * Ordered by `created_at`, which is `not null`, rather than `updated_at`, which
+ * is null for any note that has never been edited.
  *
  * Note: if row level security is enabled on `notes` without a matching policy,
  * this resolves to an empty array rather than an error.
@@ -86,7 +76,7 @@ export async function listNotes(): Promise<Note[]> {
   const { data, error } = await getSupabaseClient()
     .from(NOTES_TABLE)
     .select('id, title, body, created_at, updated_at')
-    .order('created_at', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
 
   if (error) {
     throw new NotesDatabaseError('select', error)
@@ -117,10 +107,10 @@ export async function getNote(id: string): Promise<Note | null> {
 /**
  * Creates a note and returns the stored row.
  *
- * `id` and `created_at` are left to their database defaults
- * (`gen_random_uuid()` and `now()`). `updated_at` is set explicitly because the
- * column has no default. `.select().single()` is chained because supabase-js
- * returns no rows from an insert otherwise.
+ * Timestamps are left entirely to the database: `created_at` takes its `now()`
+ * default and `updated_at` stays null until the first update. `.select()
+ * .single()` is chained because supabase-js returns no rows from an insert
+ * otherwise.
  */
 export async function createNote(input: CreateNoteInput = {}): Promise<Note> {
   const { data, error } = await getSupabaseClient()
@@ -128,7 +118,6 @@ export async function createNote(input: CreateNoteInput = {}): Promise<Note> {
     .insert({
       title: input.title ?? null,
       body: input.body ?? null,
-      updated_at: nowIso(),
     })
     .select('id, title, body, created_at, updated_at')
     .single()
@@ -143,15 +132,15 @@ export async function createNote(input: CreateNoteInput = {}): Promise<Note> {
 /**
  * Updates a note and returns the stored row, or null when no row matched.
  *
- * `updated_at` is always refreshed, including when the caller passes no fields,
- * so the timestamp reflects the write. Keys omitted from `input` are not sent,
- * leaving those columns untouched.
+ * `updated_at` is refreshed by a database trigger, not here. Keys omitted from
+ * `input` are not sent, leaving those columns untouched; an input with no keys
+ * at all is not an edit, so the row is returned unchanged.
  */
 export async function updateNote(
   id: string,
   input: UpdateNoteInput,
 ): Promise<Note | null> {
-  const patch: Record<string, string | null> = { updated_at: nowIso() }
+  const patch: Record<string, string | null> = {}
 
   if ('title' in input) {
     patch.title = input.title ?? null
@@ -159,6 +148,10 @@ export async function updateNote(
 
   if ('body' in input) {
     patch.body = input.body ?? null
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return getNote(id)
   }
 
   const { data, error } = await getSupabaseClient()
