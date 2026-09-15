@@ -27,15 +27,15 @@ documentation rather than from memory.
 
 ### `notes`
 
-Stores each note document.
+Stores each note document. Verified against the Supabase dashboard.
 
-| Column | Type | Notes |
-|---|---|---|
-| `id` | `uuid` | Primary key |
-| `title` | `text` | Note title |
-| `body` | `text` | Note content |
-| `created_at` | `timestamptz` | When the note was created |
-| `updated_at` | `timestamptz` | When the note was last modified |
+| Column | Type | Default | Nullable | Notes |
+|---|---|---|---|---|
+| `id` | `uuid` | `gen_random_uuid()` | no | Primary key |
+| `title` | `text` | — | yes | Note title |
+| `body` | `text` | — | yes | Note content |
+| `created_at` | `timestamptz` | `now()` | yes | Set by the database on insert |
+| `updated_at` | `timestamptz` | — | yes | No default and no trigger — the application must set this on every update |
 
 This satisfies core requirement 2, which asks for a `notes` table storing at
 minimum `id`, `title`, `body`, `created_at` and `updated_at`.
@@ -66,5 +66,5 @@ This document is updated as each of those steps lands.
   dashboard, which blocks access from the anon key until policies exist. Whether
   this project uses RLS policies or another approach is settled when the Supabase
   client is wired up, not here.
-- Defaults, `not null` constraints and indexes are likewise recorded here once they
-  are deliberately chosen.
+- Indexes are recorded here once they are deliberately chosen. None have been added
+  beyond the primary key.
