@@ -40,6 +40,57 @@ Stores each note document. Verified against the Supabase dashboard.
 This satisfies core requirement 2, which asks for a `notes` table storing at
 minimum `id`, `title`, `body`, `created_at` and `updated_at`.
 
+## Row Level Security
+
+RLS is **enabled** on `public.notes`. Supabase turns it on for tables created
+through the dashboard, and it has deliberately been left on.
+
+### Policies in place
+
+Exactly one policy exists on `public.notes`. There are no other policies on the
+table — no additional permissive policies, and no restrictive ones:
+
+| Policy | Command | Role | `USING` | `WITH CHECK` |
+|---|---|---|---|---|
+| `anon full access to notes` | `FOR ALL` | `anon` | `true` | `true` |
+
+```sql
+create policy "anon full access to notes"
+  on public.notes
+  for all
+  to anon
+  using (true)
+  with check (true);
+```
+
+### Why this policy exists
+
+The app reaches Supabase with the publishable (anon) key and has no sign-in
+flow, so every request arrives as the unauthenticated `anon` role. Part 5 does
+not require authentication — none of the 12 core requirements in CLAUDE.md
+mentions users, accounts or per-user data — so this single permissive policy is
+what allows create, read, update and delete to work at all.
+
+Without it, `INSERT` fails with `new row violates row-level security policy for
+table "notes"`, and `SELECT` returns an empty result rather than an error, which
+makes a blocked read look indistinguishable from an empty table.
+
+### Why this is limited to this learning project
+
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is a `NEXT_PUBLIC_` variable, so it is
+bundled into the browser JavaScript and readable by anyone who loads the page.
+Combined with `USING (true)` and `WITH CHECK (true)`, that means anyone holding
+the project URL and that key can read and write every row in `notes`.
+
+That is an accepted, deliberate trade-off for a local, single-developer learning
+project holding no real user data. It is **not** a pattern to carry into
+anything shared or deployed for real use: a production version would
+authenticate users and scope policies to `auth.uid()` rather than granting
+blanket access to `anon`.
+
+The same decision has to be made again for `collections`, `tags` and `note_tags`
+when those tables are created in steps 2 and 3.
+
 ## Scope of this document
 
 **This is the current schema only.** `notes` is the only table that exists at this
@@ -62,9 +113,5 @@ This document is updated as each of those steps lands.
 
 ## Not yet decided
 
-- **Row Level Security.** Supabase enables RLS on new tables created through the
-  dashboard, which blocks access from the anon key until policies exist. Whether
-  this project uses RLS policies or another approach is settled when the Supabase
-  client is wired up, not here.
 - Indexes are recorded here once they are deliberately chosen. None have been added
   beyond the primary key.
