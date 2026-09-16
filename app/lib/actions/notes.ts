@@ -149,11 +149,15 @@ export async function updateNoteAction(
     return failure(toSafeMessage(error, 'Could not save the note. Please try again.'))
   }
 
+  // Revalidated before the outcome is known, because a write that matched no
+  // row still means the list on screen is stale: the note was removed
+  // elsewhere. Without this the card stays rendered next to a message saying
+  // it no longer exists.
+  revalidatePath(NOTES_PATH)
+
   if (updated === null) {
     return failure('That note no longer exists, or is not visible to you.')
   }
-
-  revalidatePath(NOTES_PATH)
 
   return success()
 }
@@ -175,11 +179,14 @@ export async function deleteNoteAction(
     return failure(toSafeMessage(error, 'Could not delete the note. Please try again.'))
   }
 
+  // Revalidated before the outcome is known, for the same reason as in
+  // updateNoteAction: a delete that matched no row means the row is already
+  // gone, so the stale card has to be cleared either way.
+  revalidatePath(NOTES_PATH)
+
   if (deleted === null) {
     return failure('That note no longer exists, or is not visible to you.')
   }
-
-  revalidatePath(NOTES_PATH)
 
   return success()
 }
