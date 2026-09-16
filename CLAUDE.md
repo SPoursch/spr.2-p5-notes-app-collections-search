@@ -23,10 +23,16 @@ empty directory; see "Current state" for what has been built so far.
 
 ## Current state
 
-**Steps 1 to 4 of the implementation sequence are implemented.** Step 1
-(scaffold + notes CRUD) was merged into `main` as PR #1, merge commit `522c082`.
-Steps 2, 3 and 4 — collections, the tag system, and tag filtering plus search —
-are built on the branch `feature/collections` and are **not yet merged**.
+**Steps 1 to 4 of the implementation sequence are implemented and merged.**
+Step 1 (scaffold + notes CRUD) was merged into `main` as PR #1, merge commit
+`522c082`. Steps 2, 3 and 4 — collections, the tag system, and tag filtering
+plus search — were built on `feature/collections` and merged into `main` as
+PR #2. `main` is at merge commit `f9494ef`.
+
+**Step 5, the optional feature, is implemented and open for review.** Tag-name
+search — the workspace search also matching a note's tag names, alongside a
+final visual pass — is on `feature/tag-search` as **PR #3**, which has passed
+its pre-merge diff review and is not yet merged.
 
 Steps 3 and 4 were developed on the same branch as step 2 rather than one branch
 each, and step 2 was not merged before step 3 began. That is a deliberate,
@@ -58,15 +64,18 @@ schema: tag filtering and search operate on rows already loaded per request.
 
 ### Hard stops (do not do these yet)
 
-Steps 1 to 4 are implemented, so every schema stop is lifted: `collections`,
-`notes.collection_id`, `tags` and `note_tags` all exist and are documented in
-`docs/supabase-schema.md`. One stop remains:
+Steps 1 to 4 are implemented and merged, so every schema stop is lifted:
+`collections`, `notes.collection_id`, `tags` and `note_tags` all exist and are
+documented in `docs/supabase-schema.md`.
 
-- Do **not** build the optional feature (step 5) until all 12 core requirements
-  are confirmed working — implemented is not the same as verified end to end,
-  and steps 2 to 4 are still unmerged.
+The stop on the optional feature has also been lifted: all 12 core requirements
+were confirmed working before step 5 began, and step 5 now exists as PR #3. What
+remains is scope discipline rather than a schema stop:
 
-That stop is lifted only when the user explicitly asks for step 5.
+- Do **not** add further features beyond step 5. The sequence is complete once
+  PR #3 merges, and anything past it is new scope the user has to ask for.
+
+That stop is lifted only when the user explicitly asks for work beyond step 5.
 
 ## Data model
 
