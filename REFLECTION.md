@@ -3,7 +3,9 @@
 Review record for **PR #1 "Add notes CRUD with centralized Supabase access"**
 (branch `feature/scaffold-notes-crud`, open, not merged).
 
-All findings recorded here are **open**. None has been fixed at the time of writing.
+Every finding was **open** when this record was first written. One has since been fixed:
+the nullable / two-clock timestamp design, resolved in commit `f79ecb4` (details under
+"Resolution" in section 3b). All other findings below remain open.
 
 ## 1. Fresh-session Claude Code review
 
@@ -16,10 +18,11 @@ Findings:
   actually on disk — it described the notes CRUD as driven by Server Actions, when only
   create, update and delete are Server Actions and the list read happens directly in the
   `app/page.tsx` Server Component.
-- **Nullable timestamp / two-clock design issue.** `created_at` is written by the Postgres
-  `now()` default while `updated_at` is written by the application from the Node process
-  clock. The two are then compared to decide whether a note has been edited, so the
-  "edited" label depends on agreement between two independent clocks.
+- **Nullable timestamp / two-clock design issue.** `created_at` was written by the Postgres
+  `now()` default while `updated_at` was written by the application from the Node process
+  clock. The two were then compared to decide whether a note had been edited, so the
+  "edited" label depended on agreement between two independent clocks.
+  **Resolved** in commit `f79ecb4` — see "Resolution" in section 3b.
 
 ## 2. `/code-review --level high`
 
@@ -56,10 +59,25 @@ a. **Stale UI after update or delete when the row is missing.** `revalidatePath`
    missing row return an error message and skip it. The user is told the note no longer
    exists while still looking at its card, which remains rendered until a manual reload.
 
-b. **Nullable / two-clock timestamp design.** Independently reached by the fresh-session
-   review (section 1). Because `updated_at` is written on create as well as on update, its
-   presence carries no information, so the code compares the two clocks against a
-   fixed tolerance. The label is wrong in both skew directions.
+b. **Nullable / two-clock timestamp design — FIXED in `f79ecb4`.** Independently reached by
+   the fresh-session review (section 1). Because `updated_at` was written on create as well
+   as on update, its presence carried no information, so the code compared the two clocks
+   against a fixed tolerance. The label was wrong in both skew directions.
+
+   **Resolution.** Postgres now owns both timestamps and the application writes neither:
+   `created_at` is `not null` with `default now()`; `updated_at` is null until the first
+   update, when the `notes_set_updated_at` trigger sets it on `UPDATE`. Null therefore
+   means "never edited". The application-side `nowIso()` helper and the two-second
+   `EDIT_THRESHOLD_MS` heuristic were removed, along with the timestamp comparison they
+   supported.
+
+   **Verified end to end.** A newly created note shows "Created" and its `updated_at` comes
+   back null. After an update the trigger sets `updated_at`, the delta from `created_at`
+   matched the real elapsed time between the two operations — confirming a single clock —
+   and the note renders "Edited". The decisive regression case: a note edited 108 ms after
+   creation correctly showed "Edited", where the old 2000 ms threshold would have shown
+   "Created". `npx tsc --noEmit`, `npm run lint` and `npm run build` all pass. Temporary
+   notes created for the check were deleted afterwards.
 
 c. **`undefined`-vs-omitted `UpdateNoteInput` trap.** Independently reached by
    `/code-review` (section 2). `exactOptionalPropertyTypes` is not enabled, so an optional
@@ -105,8 +123,10 @@ internally consistent, not that it behaves correctly or preserves data.
 
 **Fix the schema and design foundations before Step 2.** The most consequential findings are
 not local bugs but foundations that later steps will build on top of. The two-clock
-timestamp decision has to be made again for `collections`, `tags` and `note_tags`, so
-leaving it unresolved replicates a clock-dependent heuristic across four tables. The
+timestamp decision had to be made again for `collections`, `tags` and `note_tags`, so
+leaving it unresolved would have replicated a clock-dependent heuristic across four tables;
+it was therefore fixed first, in `f79ecb4`, and the database-owned pattern is now the
+precedent those tables will follow. The remaining findings are unchanged. The
 `UpdateNoteInput` trap is latent only because the current UI submits every field; Step 2's
 "assign a note to a collection" is by definition a partial update and is the first caller
 that would actually reach it. The duplicated column lists and the missing server-only
