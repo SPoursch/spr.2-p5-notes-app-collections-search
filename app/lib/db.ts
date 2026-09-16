@@ -9,8 +9,8 @@ import { getSupabaseClient } from './supabase'
  * component, route handler or server action may call supabase-js directly: if a
  * new query is needed, add a function here and call that.
  *
- * Scope: the `notes` and `collections` tables. Tags and search are added in
- * later steps of the Part 5 implementation sequence.
+ * Scope: the `notes`, `collections`, `tags` and `note_tags` tables. Search is
+ * added in a later step of the Part 5 implementation sequence.
  *
  * Query patterns follow the official supabase-js documentation:
  *   https://supabase.com/docs/reference/javascript/select
@@ -19,6 +19,8 @@ import { getSupabaseClient } from './supabase'
 
 const NOTES_TABLE = 'notes'
 const COLLECTIONS_TABLE = 'collections'
+const TAGS_TABLE = 'tags'
+const NOTE_TAGS_TABLE = 'note_tags'
 
 /**
  * The columns every `notes` query selects, defined once.
@@ -32,6 +34,15 @@ const NOTE_COLUMNS = 'id, title, body, created_at, updated_at, collection_id'
 
 /** The columns every `collections` query selects. See NOTE_COLUMNS. */
 const COLLECTION_COLUMNS = 'id, name, created_at'
+
+/** The columns every `tags` query selects. See NOTE_COLUMNS. */
+const TAG_COLUMNS = 'id, name, created_at'
+
+/**
+ * Tag columns as an embedded resource on a `note_tags` row. PostgREST resolves
+ * the `tags` relationship through the `note_tags.tag_id` foreign key.
+ */
+const EMBEDDED_TAG_COLUMNS = `tag_id, tags (${TAG_COLUMNS})`
 
 /**
  * A row of the `notes` table, matching the schema verified in
@@ -64,6 +75,18 @@ export type Note = {
  * the column and its trigger were deliberately not created.
  */
 export type Collection = {
+  id: string
+  name: string
+  created_at: string
+}
+
+/**
+ * A row of the `tags` table, matching the schema in docs/supabase-schema.md.
+ * Every column is `not null`; `id` and `created_at` have database defaults.
+ *
+ * `name` has no unique constraint, so two tags may share a name.
+ */
+export type Tag = {
   id: string
   name: string
   created_at: string
@@ -299,4 +322,155 @@ export async function setNoteCollection(
   }
 
   return (data as Note | null) ?? null
+}
+
+/**
+ * Lists every tag alphabetically by name.
+ *
+ * Note: as with the other list functions, row level security without a
+ * matching policy resolves to an empty array rather than an error.
+ */
+export async function listTags(): Promise<Tag[]> {
+  const { data, error } = await getSupabaseClient()
+    .from(TAGS_TABLE)
+    .select(TAG_COLUMNS)
+    .order('name', { ascending: true })
+
+  if (error) {
+    throw new NotesDatabaseError('select', TAGS_TABLE, error)
+  }
+
+  return (data ?? []) as Tag[]
+}
+
+/**
+ * Lists the tags carried by one note, alphabetically.
+ *
+ * Reads through `note_tags` and embeds the joined `tags` row, so this is one
+ * round trip rather than a lookup per pairing.
+ */
+export async function listTagsForNote(noteId: string): Promise<Tag[]> {
+  const { data, error } = await getSupabaseClient()
+    .from(NOTE_TAGS_TABLE)
+    .select(EMBEDDED_TAG_COLUMNS)
+    .eq('note_id', noteId)
+
+  if (error) {
+    throw new NotesDatabaseError('select', NOTE_TAGS_TABLE, error)
+  }
+
+  const rows = (data ?? []) as unknown as { tags: Tag | null }[]
+
+  return rows
+    .map((row) => row.tags)
+    .filter((tag): tag is Tag => tag !== null)
+    .sort((a, b) => a.name.localeCompare(b.name))
+}
+
+/**
+ * Lists every note-to-tag pairing at once, keyed by note id.
+ *
+ * Requirement 9 puts tags on every row of the list pane, so the alternative is
+ * one `listTagsForNote` call per note. This keeps that to a single query, the
+ * same reason notes are grouped by collection in memory rather than queried
+ * per collection.
+ */
+export async function listTagsByNote(): Promise<Map<string, Tag[]>> {
+  const { data, error } = await getSupabaseClient()
+    .from(NOTE_TAGS_TABLE)
+    .select(`note_id, ${EMBEDDED_TAG_COLUMNS}`)
+
+  if (error) {
+    throw new NotesDatabaseError('select', NOTE_TAGS_TABLE, error)
+  }
+
+  const rows = (data ?? []) as unknown as {
+    note_id: string
+    tags: Tag | null
+  }[]
+  const byNote = new Map<string, Tag[]>()
+
+  for (const row of rows) {
+    if (row.tags === null) {
+      continue
+    }
+
+    const tags = byNote.get(row.note_id) ?? []
+    tags.push(row.tags)
+    byNote.set(row.note_id, tags)
+  }
+
+  for (const tags of byNote.values()) {
+    tags.sort((a, b) => a.name.localeCompare(b.name))
+  }
+
+  return byNote
+}
+
+/**
+ * Creates a tag and returns the stored row.
+ *
+ * `id` and `created_at` are left to their database defaults. The name is
+ * passed through as given: validation belongs to the calling Server Action,
+ * matching how note content and collection names are handled.
+ */
+export async function createTag(name: string): Promise<Tag> {
+  const { data, error } = await getSupabaseClient()
+    .from(TAGS_TABLE)
+    .insert({ name })
+    .select(TAG_COLUMNS)
+    .single()
+
+  if (error) {
+    throw new NotesDatabaseError('insert', TAGS_TABLE, error)
+  }
+
+  return data as Tag
+}
+
+/**
+ * Pairs a tag with a note.
+ *
+ * `upsert` rather than `insert` so that re-adding a tag the note already has
+ * succeeds quietly instead of failing on the composite primary key. The
+ * pairing is the desired end state either way.
+ */
+export async function addTagToNote(
+  noteId: string,
+  tagId: string,
+): Promise<void> {
+  const { error } = await getSupabaseClient()
+    .from(NOTE_TAGS_TABLE)
+    .upsert(
+      { note_id: noteId, tag_id: tagId },
+      { onConflict: 'note_id,tag_id', ignoreDuplicates: true },
+    )
+
+  if (error) {
+    throw new NotesDatabaseError('insert', NOTE_TAGS_TABLE, error)
+  }
+}
+
+/**
+ * Removes a tag from a note, leaving both the note and the tag itself intact.
+ *
+ * Returns whether a pairing was actually removed, so a caller can tell "no
+ * longer tagged" from "was never tagged".
+ */
+export async function removeTagFromNote(
+  noteId: string,
+  tagId: string,
+): Promise<boolean> {
+  const { data, error } = await getSupabaseClient()
+    .from(NOTE_TAGS_TABLE)
+    .delete()
+    .eq('note_id', noteId)
+    .eq('tag_id', tagId)
+    .select('note_id')
+
+  if (error) {
+    throw new NotesDatabaseError('delete', NOTE_TAGS_TABLE, error)
+  }
+
+  return (data ?? []).length > 0
 }

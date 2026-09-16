@@ -1,7 +1,9 @@
-import type { Collection, Note } from '@/app/lib/db'
+import type { Collection, Note, Tag } from '@/app/lib/db'
+import type { WorkspaceState } from '@/app/lib/workspace-url'
 
 import { NewNoteForm } from './NewNoteForm'
 import { NoteCard } from './NoteCard'
+import { SearchInput } from './SearchInput'
 
 /**
  * Middle pane: the notes of the collection being viewed, as compact rows with
@@ -19,6 +21,10 @@ export function NoteList({
   collectionMissing,
   selectedNoteId,
   activeCollection,
+  tagsByNote,
+  state,
+  searchQuery,
+  selectedTagCount,
 }: {
   notes: Note[]
   collections: Collection[]
@@ -27,6 +33,10 @@ export function NoteList({
   collectionMissing: boolean
   selectedNoteId: string | null
   activeCollection: string | null
+  tagsByNote: Map<string, Tag[]>
+  state: WorkspaceState
+  searchQuery: string
+  selectedTagCount: number
 }) {
   return (
     <section
@@ -42,6 +52,11 @@ export function NoteList({
             ? 'Unavailable'
             : `${notes.length} ${notes.length === 1 ? 'note' : 'notes'}`}
         </p>
+
+        {/* Requirement 11: search at the top of the workspace. */}
+        <div className="mt-2">
+          <SearchInput query={searchQuery} />
+        </div>
       </header>
 
       {/* Requirement 12: every branch here says something rather than going blank. */}
@@ -63,6 +78,25 @@ export function NoteList({
               It may have been deleted. Pick another one from the sidebar.
             </p>
           </div>
+        ) : notes.length === 0 && searchQuery.length > 0 ? (
+          <div className="p-6 text-center">
+            <h2 className="text-sm font-semibold">No matching notes</h2>
+            <p className="mt-1.5 text-xs text-muted">
+              Nothing here matches &ldquo;{searchQuery}&rdquo;
+              {selectedTagCount > 0
+                ? ' with the selected tags. Try clearing a tag or changing the search.'
+                : '. Try a different search.'}
+            </p>
+          </div>
+        ) : notes.length === 0 && selectedTagCount > 0 ? (
+          <div className="p-6 text-center">
+            <h2 className="text-sm font-semibold">No notes with these tags</h2>
+            <p className="mt-1.5 text-xs text-muted">
+              {selectedTagCount === 1
+                ? 'No note here carries the selected tag. Clear it from the sidebar to see everything again.'
+                : 'No note here carries all the selected tags. Clear one from the sidebar to widen the list.'}
+            </p>
+          </div>
         ) : notes.length === 0 ? (
           <div className="p-6 text-center">
             <h2 className="text-sm font-semibold">No notes at the moment</h2>
@@ -79,7 +113,8 @@ export function NoteList({
                 <NoteCard
                   note={note}
                   selected={note.id === selectedNoteId}
-                  activeCollection={activeCollection}
+                  tags={tagsByNote.get(note.id) ?? []}
+                  state={state}
                 />
               </li>
             ))}

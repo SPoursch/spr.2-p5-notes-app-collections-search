@@ -1,7 +1,7 @@
 import Link from 'next/link'
 
-import type { Note } from '@/app/lib/db'
-import { noteHref } from '@/app/lib/workspace-url'
+import type { Note, Tag } from '@/app/lib/db'
+import { noteHref, type WorkspaceState } from '@/app/lib/workspace-url'
 
 /**
  * One row in the note list pane.
@@ -60,11 +60,13 @@ function formatRowDate(value: string | null): string | null {
 export function NoteCard({
   note,
   selected,
-  activeCollection,
+  tags,
+  state,
 }: {
   note: Note
   selected: boolean
-  activeCollection: string | null
+  tags: Tag[]
+  state: WorkspaceState
 }) {
   const title = displayTitle(note.title)
   const body = note.body?.trim() ?? ''
@@ -74,7 +76,7 @@ export function NoteCard({
 
   return (
     <Link
-      href={noteHref(activeCollection, note.id)}
+      href={noteHref(state, note.id)}
       aria-current={selected ? 'true' : undefined}
       className={`block border-b border-divider px-4 py-2.5 transition-colors ${
         selected ? 'bg-selected' : 'hover:bg-black/[0.04] dark:hover:bg-white/5'
@@ -88,6 +90,20 @@ export function NoteCard({
           {body.length > 0 ? body : 'No additional text'}
         </span>
       </p>
+
+      {/* Requirement 9: tags appear on the note's row in the list. */}
+      {tags.length > 0 ? (
+        <p className="mt-1 flex flex-wrap gap-1">
+          {tags.map((tag) => (
+            <span
+              key={tag.id}
+              className="rounded-full border border-divider px-1.5 py-0.5 text-[11px] text-muted"
+            >
+              {tag.name}
+            </span>
+          ))}
+        </p>
+      ) : null}
     </Link>
   )
 }

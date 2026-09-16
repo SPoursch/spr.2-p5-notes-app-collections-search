@@ -1,7 +1,8 @@
-import type { Collection, Note } from '@/app/lib/db'
+import type { Collection, Note, Tag } from '@/app/lib/db'
 
 import { DeleteNoteButton } from './DeleteNoteButton'
 import { NoteCollectionPicker } from './NoteCollectionPicker'
+import { NoteTagEditor } from './NoteTagEditor'
 import { NoteForm } from './NoteForm'
 import { displayTitle, formatTimestamp } from './NoteCard'
 
@@ -19,9 +20,13 @@ import { displayTitle, formatTimestamp } from './NoteCard'
 export function SelectedNote({
   note,
   collections,
+  tags,
+  allTags,
 }: {
   note: Note
   collections: Collection[]
+  tags: Tag[]
+  allTags: Tag[]
 }) {
   const title = displayTitle(note.title)
   const body = note.body?.trim() ?? ''
@@ -43,12 +48,10 @@ export function SelectedNote({
         {title}
       </h2>
 
-      {/*
-        Reserved so requirement 9's tags can plug in here without restructuring.
-        It deliberately shows no tags: none exist yet, and a placeholder chip
-        would misrepresent stored data.
-      */}
-      <p className="mt-1 text-xs text-accent">Tags — not yet available</p>
+      {/* Requirement 9: the tags area the metadata row reserved. */}
+      <div className="mt-3">
+        <NoteTagEditor note={note} tags={tags} allTags={allTags} />
+      </div>
 
       {body.length > 0 ? (
         <p className="mt-5 whitespace-pre-wrap text-[15px]/7">{body}</p>

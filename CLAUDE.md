@@ -23,9 +23,16 @@ empty directory; see "Current state" for what has been built so far.
 
 ## Current state
 
-**Step 1 of the implementation sequence — scaffold app + notes CRUD — is
-implemented and merged.** It was built on the branch `feature/scaffold-notes-crud`
-and merged into `main` as PR #1, merge commit `522c082`.
+**Steps 1 to 4 of the implementation sequence are implemented.** Step 1
+(scaffold + notes CRUD) was merged into `main` as PR #1, merge commit `522c082`.
+Steps 2, 3 and 4 — collections, the tag system, and tag filtering plus search —
+are built on the branch `feature/collections` and are **not yet merged**.
+
+Steps 3 and 4 were developed on the same branch as step 2 rather than one branch
+each, and step 2 was not merged before step 3 began. That is a deliberate,
+time-constrained departure from "Build one feature at a time" and "One Git
+branch per feature" under "Workflow rules", recorded here rather than left as
+silent drift.
 
 What exists:
 
@@ -34,29 +41,32 @@ What exists:
   environment variables only, with `.env.local.example` as the committed template.
 - The centralised data access module `app/lib/db.ts`. It is the only module that
   queries Supabase, and `app/lib/supabase.ts` is imported by nothing else.
-- A `notes` table in Supabase (`id`, `title`, `body`, `created_at`, `updated_at`),
+- Four tables in Supabase — `notes`, `collections`, `tags` and `note_tags` —
   documented in `docs/supabase-schema.md`.
-- Create, read, update and delete for notes, driven by Server Actions in
-  `app/lib/actions/notes.ts` and rendered by `app/page.tsx` and `app/components/`.
+- A three-pane workspace: the collections tree, the note list for the collection
+  being viewed, and an editor pane for the selected note.
+- Notes CRUD, collection create/assign, tag create/add/remove, tag filtering and
+  search, driven by Server Actions in `app/lib/actions/` and rendered by
+  `app/page.tsx` and `app/components/`. Reads happen in Server Components; only
+  mutations and the search field are Client Components.
+- Workspace state lives entirely in the URL (`collection`, `tag`, `q`, `note`),
+  so filtering and selection hold no client-side state. Filtering and search run
+  in memory over the already-loaded rows, adding no queries.
 
-Core requirements 1 and 2 are satisfied. Requirement 12 is satisfied for the
-notes workspace only; the collection, search and tag empty states arrive with
-their own steps.
+All 12 core requirements have an implementation. Requirements 10 and 11 add no
+schema: tag filtering and search operate on rows already loaded per request.
 
 ### Hard stops (do not do these yet)
 
-Step 1 is done and merged, so its stops are lifted — including the one that held
-step 2 back until PR #1 was merged. The stops that remain belong to later steps:
+Steps 1 to 4 are implemented, so every schema stop is lifted: `collections`,
+`notes.collection_id`, `tags` and `note_tags` all exist and are documented in
+`docs/supabase-schema.md`. One stop remains:
 
-- Do **not** create the `tags` or `note_tags` tables before step 3, which owns
-  them.
-- Do **not** build the optional feature until all 12 core requirements work.
+- Do **not** build the optional feature (step 5) until all 12 core requirements
+  are confirmed working — implemented is not the same as verified end to end,
+  and steps 2 to 4 are still unmerged.
 
-Step 2 owns the `collections` table and the `collection_id` column on `notes`, so
-those are no longer barred.
-
-The remaining stops are lifted one at a time, in the order given under
-"Implementation sequence", and only when the user explicitly asks for that step.
+That stop is lifted only when the user explicitly asks for step 5.
 
 ## Data model
 

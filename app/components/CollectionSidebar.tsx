@@ -1,7 +1,12 @@
 import Link from 'next/link'
 
 import type { Collection, Note } from '@/app/lib/db'
-import { UNCOLLECTED, collectionHref, noteHref } from '@/app/lib/workspace-url'
+import {
+  UNCOLLECTED,
+  collectionHref,
+  noteHref,
+  type WorkspaceState,
+} from '@/app/lib/workspace-url'
 
 import { displayTitle } from './NoteCard'
 import { NewCollectionForm } from './NewCollectionForm'
@@ -72,6 +77,7 @@ function CollectionGroup({
   emptyLabel,
   selectedNoteId,
   activeCollection,
+  state,
 }: {
   label: string
   groupKey: string
@@ -79,6 +85,7 @@ function CollectionGroup({
   emptyLabel: string
   selectedNoteId: string | null
   activeCollection: string | null
+  state: WorkspaceState
 }) {
   const isActive = activeCollection === groupKey
 
@@ -103,7 +110,7 @@ function CollectionGroup({
         </span>
 
         <Link
-          href={collectionHref(groupKey)}
+          href={collectionHref(state, groupKey)}
           aria-current={isActive ? 'page' : undefined}
           className="flex min-w-0 flex-1 items-center gap-2 py-1.5"
         >
@@ -128,7 +135,7 @@ function CollectionGroup({
               return (
                 <li key={note.id}>
                   <Link
-                    href={noteHref(groupKey, note.id)}
+                    href={noteHref(state, note.id)}
                     aria-current={selected ? 'true' : undefined}
                     className={`flex items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors ${
                       selected
@@ -157,12 +164,16 @@ export function CollectionSidebar({
   loadFailed,
   selectedNoteId,
   activeCollection,
+  state,
+  tagFilter,
 }: {
   collections: Collection[]
   notes: Note[]
   loadFailed: boolean
   selectedNoteId: string | null
   activeCollection: string | null
+  state: WorkspaceState
+  tagFilter: React.ReactNode
 }) {
   // Each note appears exactly once: under its collection, or under
   // "Uncollected" when collection_id is null.
@@ -201,7 +212,7 @@ export function CollectionSidebar({
           <div className="flex flex-col gap-0.5">
             {/* Clears the filter, so the list pane shows every note again. */}
             <Link
-              href={collectionHref(null)}
+              href={collectionHref(state, null)}
               aria-current={showingAll ? 'page' : undefined}
               className={`flex items-center gap-2 rounded-md px-2 py-1.5 pl-[1.4rem] text-sm font-medium transition-colors ${
                 showingAll
@@ -224,6 +235,7 @@ export function CollectionSidebar({
                 notes={byCollection.get(collection.id) ?? []}
                 emptyLabel="No notes in this collection yet."
                 selectedNoteId={selectedNoteId}
+                state={state}
                 activeCollection={activeCollection}
               />
             ))}
@@ -234,6 +246,7 @@ export function CollectionSidebar({
               notes={uncollected}
               emptyLabel="Every note belongs to a collection."
               selectedNoteId={selectedNoteId}
+              state={state}
               activeCollection={activeCollection}
             />
 
@@ -246,6 +259,9 @@ export function CollectionSidebar({
           </div>
         )}
       </nav>
+
+      {/* Requirement 10: the tag filter sits between the tree and the form. */}
+      <div className="shrink-0 border-t border-divider">{tagFilter}</div>
 
       <div className="shrink-0 border-t border-divider px-4 py-3">
         <NewCollectionForm />

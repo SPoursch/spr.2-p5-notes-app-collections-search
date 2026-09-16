@@ -1,13 +1,17 @@
 import { CollectionSidebar } from '@/app/components/CollectionSidebar'
 import { NoteList } from '@/app/components/NoteList'
 import { SelectedNote } from '@/app/components/SelectedNote'
+import { TagFilter } from '@/app/components/TagFilter'
 import {
   listCollections,
   listNotes,
+  listTags,
+  listTagsByNote,
   type Collection,
   type Note,
+  type Tag,
 } from '@/app/lib/db'
-import { UNCOLLECTED } from '@/app/lib/workspace-url'
+import { UNCOLLECTED, type WorkspaceState } from '@/app/lib/workspace-url'
 
 /**
  * Three-pane workspace: the collections tree, the notes of the collection
@@ -38,7 +42,12 @@ function firstValue(value: string | string[] | undefined): string | null {
 export default async function Page({
   searchParams,
 }: {
-  searchParams: Promise<{ note?: string | string[]; collection?: string | string[] }>
+  searchParams: Promise<{
+    note?: string | string[]
+    collection?: string | string[]
+    tag?: string | string[]
+    q?: string | string[]
+  }>
 }) {
   let notes: Note[] = []
   let loadFailed = false
@@ -64,10 +73,47 @@ export default async function Page({
     collectionsFailed = true
   }
 
+  // Tags are read once for the whole page: one query for the tag list and one
+  // for every pairing, then grouped in memory. Reading them per note would be
+  // a query per row of the list pane.
+  let allTags: Tag[] = []
+  let tagsByNote = new Map<string, Tag[]>()
+
+  try {
+    allTags = await listTags()
+    tagsByNote = await listTagsByNote()
+  } catch (error) {
+    // Degrade to "no tags" rather than blanking the workspace: the tables may
+    // not exist yet, since their SQL is run by hand.
+    console.error('[tags] failed to load tags:', error)
+  }
+
   // Both selections come from the URL, so no client-side state is involved.
-  const { note: noteParam, collection: collectionParam } = await searchParams
+  const {
+    note: noteParam,
+    collection: collectionParam,
+    tag: tagParam,
+    q: queryParam,
+  } = await searchParams
   const requestedNoteId = firstValue(noteParam)
   const activeCollection = firstValue(collectionParam)
+
+  // `tag` may repeat; keep only ids that still exist so a stale link cannot
+  // filter everything away with a tag that has since been deleted.
+  const knownTagIds = new Set(allTags.map((tag) => tag.id))
+  const requestedTags = (
+    Array.isArray(tagParam) ? tagParam : tagParam ? [tagParam] : []
+  ).filter((id) => knownTagIds.has(id))
+
+  const searchQuery = (firstValue(queryParam) ?? '').trim()
+
+  // The single object every link builder needs to preserve the other panes.
+  const workspaceState: WorkspaceState = {
+    collection: activeCollection,
+    tags: requestedTags,
+    query: searchQuery.length > 0 ? searchQuery : null,
+    note: requestedNoteId,
+  }
 
   const selectedNote =
     notes.find((candidate) => candidate.id === requestedNoteId) ?? null
@@ -102,6 +148,29 @@ export default async function Page({
     )
   }
 
+  // Requirement 10: AND logic — a note must carry every selected tag.
+  if (requestedTags.length > 0) {
+    visibleNotes = visibleNotes.filter((note) => {
+      const noteTagIds = new Set(
+        (tagsByNote.get(note.id) ?? []).map((tag) => tag.id),
+      )
+
+      return requestedTags.every((id) => noteTagIds.has(id))
+    })
+  }
+
+  // Requirement 11: title and body, case-insensitive, applied after the tag
+  // filter so search respects it rather than widening past it.
+  if (searchQuery.length > 0) {
+    const needle = searchQuery.toLowerCase()
+
+    visibleNotes = visibleNotes.filter((note) => {
+      const haystack = `${note.title ?? ''} ${note.body ?? ''}`.toLowerCase()
+
+      return haystack.includes(needle)
+    })
+  }
+
   const listTitle =
     activeCollection === null
       ? 'All notes'
@@ -117,6 +186,8 @@ export default async function Page({
         loadFailed={collectionsFailed}
         selectedNoteId={selectedNote?.id ?? null}
         activeCollection={activeCollection}
+        state={workspaceState}
+        tagFilter={<TagFilter tags={allTags} state={workspaceState} />}
       />
 
       <NoteList
@@ -127,6 +198,10 @@ export default async function Page({
         collectionMissing={collectionMissing}
         selectedNoteId={selectedNote?.id ?? null}
         activeCollection={activeCollection}
+        tagsByNote={tagsByNote}
+        state={workspaceState}
+        searchQuery={searchQuery}
+        selectedTagCount={requestedTags.length}
       />
 
       <main
@@ -140,7 +215,12 @@ export default async function Page({
         ) : null}
 
         {selectedNote ? (
-          <SelectedNote note={selectedNote} collections={collections} />
+          <SelectedNote
+            note={selectedNote}
+            collections={collections}
+            tags={tagsByNote.get(selectedNote.id) ?? []}
+            allTags={allTags}
+          />
         ) : (
           /*
             Requirement 12: no blank pane. Creating a note lives in the list
