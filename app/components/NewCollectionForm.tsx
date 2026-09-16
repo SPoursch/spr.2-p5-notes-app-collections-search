@@ -31,7 +31,7 @@ export function NewCollectionForm() {
     <form ref={formRef} action={formAction} className="flex flex-col gap-2">
       <label
         htmlFor="new-collection-name"
-        className="text-xs font-medium uppercase tracking-wide opacity-60"
+        className="text-[13px] font-semibold uppercase tracking-[0.08em] text-sidebar-muted"
       >
         New collection
       </label>
@@ -43,20 +43,20 @@ export function NewCollectionForm() {
           type="text"
           maxLength={100}
           placeholder="Collection name"
-          className="min-w-0 flex-1 rounded-md border border-black/15 bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50"
+          className="min-w-0 flex-1 rounded-[10px] border border-white/15 bg-white/5 px-3 py-2 text-[15px] text-sidebar-foreground outline-none placeholder:text-sidebar-muted focus:border-ring"
         />
         <button
           type="submit"
           disabled={pending}
           aria-label="Create collection"
-          className="shrink-0 rounded-md bg-foreground px-2.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-50"
+          className="shrink-0 rounded-[10px] bg-indigo-500 px-3.5 py-2 text-[15px] font-semibold text-white transition-colors hover:bg-indigo-400 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {pending ? 'Adding…' : 'Add'}
         </button>
       </div>
 
       {state.message ? (
-        <p role="alert" className="text-xs text-red-700 dark:text-red-300">
+        <p role="alert" className="text-[13px] text-red-300">
           {state.message}
         </p>
       ) : null}

@@ -3,10 +3,12 @@ import Link from 'next/link'
 import type { Note, Tag } from '@/app/lib/db'
 import { noteHref, type WorkspaceState } from '@/app/lib/workspace-url'
 
+import { TagChip } from './TagChip'
+
 /**
- * One row in the note list pane.
+ * One card in the note list pane.
  *
- * A Server Component: the row is a link that puts the note id in the URL, so
+ * A Server Component: the card is a link that puts the note id in the URL, so
  * selection needs no client-side state. Editing and deleting live in the
  * editor pane on the right, which is where the selected note is rendered.
  */
@@ -40,8 +42,8 @@ export function formatTimestamp(value: string | null): string | null {
 }
 
 /**
- * Date only, for the cramped second line of a row where the full timestamp
- * would crowd out the preview text.
+ * Date only, for the card's footer row where the full timestamp would crowd
+ * out the tags beside it.
  */
 function formatRowDate(value: string | null): string | null {
   if (!value) {
@@ -54,7 +56,7 @@ function formatRowDate(value: string | null): string | null {
     return null
   }
 
-  return new Intl.DateTimeFormat('en-GB', { dateStyle: 'short' }).format(date)
+  return new Intl.DateTimeFormat('en-GB', { dateStyle: 'medium' }).format(date)
 }
 
 export function NoteCard({
@@ -78,32 +80,38 @@ export function NoteCard({
     <Link
       href={noteHref(state, note.id)}
       aria-current={selected ? 'true' : undefined}
-      className={`block border-b border-divider px-4 py-2.5 transition-colors ${
-        selected ? 'bg-selected' : 'hover:bg-black/[0.04] dark:hover:bg-white/5'
+      className={`block rounded-[var(--radius-card)] border p-4 transition-colors ${
+        selected
+          ? 'border-selected-border bg-selected'
+          : 'border-border bg-card hover:border-border-strong hover:bg-slate-50'
       }`}
     >
-      <h3 className="truncate text-sm font-semibold">{title}</h3>
+      <h3
+        className={`truncate text-[16px] font-semibold leading-snug ${
+          selected ? 'text-primary' : 'text-foreground'
+        }`}
+      >
+        {title}
+      </h3>
 
-      <p className="mt-0.5 flex gap-2 text-xs text-muted">
-        {rowDate ? <span className="shrink-0">{rowDate}</span> : null}
-        <span className="min-w-0 flex-1 truncate">
-          {body.length > 0 ? body : 'No additional text'}
-        </span>
+      {/* Two lines of preview: enough to recognise a note, short enough that
+          the cards stay evenly scannable. */}
+      <p className="mt-1 line-clamp-2 text-[14px] leading-relaxed text-muted">
+        {body.length > 0 ? body : 'No additional text'}
       </p>
 
-      {/* Requirement 9: tags appear on the note's row in the list. */}
-      {tags.length > 0 ? (
-        <p className="mt-1 flex flex-wrap gap-1">
-          {tags.map((tag) => (
-            <span
-              key={tag.id}
-              className="rounded-full border border-divider px-1.5 py-0.5 text-[11px] text-muted"
-            >
-              {tag.name}
-            </span>
-          ))}
-        </p>
-      ) : null}
+      {/* Requirement 9: tags appear on the note's card in the list. */}
+      <div className="mt-3 flex flex-wrap items-center gap-x-2 gap-y-1.5">
+        {tags.map((tag) => (
+          <TagChip key={tag.id} name={tag.name} />
+        ))}
+
+        {rowDate ? (
+          <span className="ml-auto shrink-0 text-[14px] text-muted">
+            {rowDate}
+          </span>
+        ) : null}
+      </div>
     </Link>
   )
 }

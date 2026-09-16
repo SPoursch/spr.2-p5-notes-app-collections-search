@@ -8,6 +8,7 @@ import {
   type WorkspaceState,
 } from '@/app/lib/workspace-url'
 
+import { BrandHeader } from './BrandHeader'
 import { displayTitle } from './NoteCard'
 import { NewCollectionForm } from './NewCollectionForm'
 
@@ -22,6 +23,10 @@ import { NewCollectionForm } from './NewCollectionForm'
  * expands the group in place, and the link inside it points the list pane at
  * that collection. Notes are grouped in memory from the two arrays the page
  * already loaded, so rendering the tree costs no additional queries.
+ *
+ * Layout: the tree scrolls between a fixed brand block and a fixed footer. The
+ * footer holds the tag filter, which puts it at the foot of the pane alongside
+ * the "New note" form in the pane beside it.
  */
 
 /** Sole inline icons; no icon library is introduced for this. */
@@ -30,7 +35,7 @@ function ChevronIcon() {
     <svg
       viewBox="0 0 12 12"
       aria-hidden="true"
-      className="size-3 shrink-0 opacity-50 transition-transform duration-150 group-open:rotate-90"
+      className="size-3 shrink-0 opacity-60 transition-transform duration-150 group-open:rotate-90"
     >
       <path d="M4 2.5 8 6l-4 3.5" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
@@ -39,7 +44,7 @@ function ChevronIcon() {
 
 function FolderIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-4 shrink-0 opacity-60">
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-4 shrink-0 opacity-70">
       <path
         d="M1.5 4.5A1.5 1.5 0 0 1 3 3h2.6a1.5 1.5 0 0 1 1.06.44l.9.9H13a1.5 1.5 0 0 1 1.5 1.5v6.16A1.5 1.5 0 0 1 13 13.5H3a1.5 1.5 0 0 1-1.5-1.5v-7.5Z"
         fill="none"
@@ -53,7 +58,7 @@ function FolderIcon() {
 
 function NoteIcon() {
   return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3.5 shrink-0 opacity-45">
+    <svg viewBox="0 0 16 16" aria-hidden="true" className="size-3.5 shrink-0 opacity-60">
       <path
         d="M4 1.5h5L12.5 5v9.5a1 1 0 0 1-1 1h-7a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1Z"
         fill="none"
@@ -65,6 +70,10 @@ function NoteIcon() {
     </svg>
   )
 }
+
+/** Shared by the collection rows and the "All notes" row. */
+const ROW_BASE =
+  'flex items-center gap-2.5 rounded-[10px] text-[15px] font-medium transition-colors'
 
 /**
  * One expandable group. Collection headers and the "Uncollected" group share
@@ -101,34 +110,38 @@ function CollectionGroup({
     // left behind, and a freshly selected collection could render collapsed.
     <details key={`${groupKey}-${open}`} className="group" open={open}>
       <summary
-        className={`flex cursor-pointer list-none items-center gap-2 rounded-md pr-2 text-sm font-medium transition-colors [&::-webkit-details-marker]:hidden ${
-          isActive ? 'bg-selected' : 'hover:bg-black/[0.04] dark:hover:bg-white/5'
+        className={`${ROW_BASE} cursor-pointer list-none pr-2.5 [&::-webkit-details-marker]:hidden ${
+          isActive
+            ? 'bg-sidebar-active text-sidebar-foreground'
+            : 'text-sidebar-foreground/85 hover:bg-sidebar-hover hover:text-sidebar-foreground'
         }`}
       >
-        <span className="pl-2">
+        <span className="pl-2.5">
           <ChevronIcon />
         </span>
 
         <Link
           href={collectionHref(state, groupKey)}
           aria-current={isActive ? 'page' : undefined}
-          className="flex min-w-0 flex-1 items-center gap-2 py-1.5"
+          className="flex min-w-0 flex-1 items-center gap-2.5 py-2"
         >
           <FolderIcon />
           <span className="min-w-0 flex-1 truncate">{label}</span>
         </Link>
 
-        <span className="shrink-0 text-xs font-normal text-muted">
+        <span className="shrink-0 text-[13px] font-normal tabular-nums text-sidebar-muted">
           {notes.length}
         </span>
       </summary>
 
-      {/* Indentation plus a subtle connector line, aligned under the folder icon. */}
-      <div className="ml-[1.35rem] border-l border-divider pl-2">
+      {/* Indentation plus a connector line, aligned under the folder icon. */}
+      <div className="mt-0.5 ml-[1.6rem] border-l border-sidebar-border pl-2">
         {notes.length === 0 ? (
-          <p className="px-2 py-1.5 text-xs italic text-muted">{emptyLabel}</p>
+          <p className="px-2.5 py-1.5 text-[13px] italic text-sidebar-muted">
+            {emptyLabel}
+          </p>
         ) : (
-          <ul>
+          <ul className="flex flex-col gap-0.5">
             {notes.map((note) => {
               const selected = note.id === selectedNoteId
 
@@ -137,10 +150,10 @@ function CollectionGroup({
                   <Link
                     href={noteHref(state, note.id)}
                     aria-current={selected ? 'true' : undefined}
-                    className={`flex items-center gap-2 rounded-md px-2 py-1 text-[13px] transition-colors ${
+                    className={`flex items-center gap-2 rounded-[8px] px-2.5 py-1.5 text-[14px] transition-colors ${
                       selected
-                        ? 'bg-selected font-medium'
-                        : 'text-muted hover:bg-black/[0.04] hover:text-foreground dark:hover:bg-white/5'
+                        ? 'bg-sidebar-active font-medium text-sidebar-foreground'
+                        : 'text-sidebar-muted hover:bg-sidebar-hover hover:text-sidebar-foreground'
                     }`}
                   >
                     <NoteIcon />
@@ -196,37 +209,39 @@ export function CollectionSidebar({
   return (
     <aside
       aria-label="Collections"
-      className="flex shrink-0 flex-col border-b border-divider bg-sidebar md:h-full md:w-[240px] md:border-b-0 md:border-r"
+      className="flex shrink-0 flex-col bg-sidebar text-sidebar-foreground md:h-full md:w-[264px]"
     >
-      <h2 className="shrink-0 px-4 py-3 text-sm font-semibold tracking-tight">
-        Collections
-      </h2>
+      <BrandHeader />
 
-      <nav className="min-h-0 flex-1 px-2 md:overflow-y-auto">
+      <nav className="min-h-0 flex-1 px-3 pb-3 md:overflow-y-auto">
+        {/* Clears the filter, so the list pane shows every note again. */}
+        <Link
+          href={collectionHref(state, null)}
+          aria-current={showingAll ? 'page' : undefined}
+          className={`${ROW_BASE} px-2.5 py-2 ${
+            showingAll
+              ? 'bg-sidebar-active text-sidebar-foreground'
+              : 'text-sidebar-foreground/85 hover:bg-sidebar-hover hover:text-sidebar-foreground'
+          }`}
+        >
+          <FolderIcon />
+          <span className="min-w-0 flex-1 truncate">All notes</span>
+          <span className="shrink-0 text-[13px] font-normal tabular-nums text-sidebar-muted">
+            {notes.length}
+          </span>
+        </Link>
+
+        <h2 className="mt-5 mb-2 px-2.5 text-[13px] font-semibold uppercase tracking-[0.08em] text-sidebar-muted">
+          Collections
+        </h2>
+
         {loadFailed ? (
-          <p className="rounded-md border border-red-200 bg-red-50 px-2.5 py-2 text-xs text-red-700 dark:border-red-900/50 dark:bg-red-950/30 dark:text-red-300">
-            Collections couldn&apos;t be loaded. Your notes are listed in full on
-            the right.
+          <p className="rounded-[10px] border border-red-400/30 bg-red-500/10 px-3 py-2 text-[13px] text-red-200">
+            Collections couldn&apos;t be loaded. Your notes are listed in full
+            in the next pane.
           </p>
         ) : (
           <div className="flex flex-col gap-0.5">
-            {/* Clears the filter, so the list pane shows every note again. */}
-            <Link
-              href={collectionHref(state, null)}
-              aria-current={showingAll ? 'page' : undefined}
-              className={`flex items-center gap-2 rounded-md px-2 py-1.5 pl-[1.4rem] text-sm font-medium transition-colors ${
-                showingAll
-                  ? 'bg-selected'
-                  : 'hover:bg-black/[0.04] dark:hover:bg-white/5'
-              }`}
-            >
-              <FolderIcon />
-              <span className="min-w-0 flex-1 truncate">All notes</span>
-              <span className="shrink-0 text-xs font-normal text-muted">
-                {notes.length}
-              </span>
-            </Link>
-
             {collections.map((collection) => (
               <CollectionGroup
                 key={collection.id}
@@ -235,8 +250,8 @@ export function CollectionSidebar({
                 notes={byCollection.get(collection.id) ?? []}
                 emptyLabel="No notes in this collection yet."
                 selectedNoteId={selectedNoteId}
-                state={state}
                 activeCollection={activeCollection}
+                state={state}
               />
             ))}
 
@@ -246,12 +261,12 @@ export function CollectionSidebar({
               notes={uncollected}
               emptyLabel="Every note belongs to a collection."
               selectedNoteId={selectedNoteId}
-              state={state}
               activeCollection={activeCollection}
+              state={state}
             />
 
             {collections.length === 0 ? (
-              <p className="mt-1 px-2 text-xs text-muted">
+              <p className="mt-1 px-2.5 text-[13px] text-sidebar-muted">
                 No collections yet. Create one below to start grouping your
                 notes.
               </p>
@@ -260,11 +275,17 @@ export function CollectionSidebar({
         )}
       </nav>
 
-      {/* Requirement 10: the tag filter sits between the tree and the form. */}
-      <div className="shrink-0 border-t border-divider">{tagFilter}</div>
+      {/*
+        Pinned footer. The tag filter sits here rather than above the tree so
+        that its block ends at the foot of the pane, level with the "New note"
+        form in the list pane beside it.
+      */}
+      <div className="shrink-0 border-t border-sidebar-border">
+        {tagFilter}
 
-      <div className="shrink-0 border-t border-divider px-4 py-3">
-        <NewCollectionForm />
+        <div className="border-t border-sidebar-border px-4 py-4">
+          <NewCollectionForm />
+        </div>
       </div>
     </aside>
   )

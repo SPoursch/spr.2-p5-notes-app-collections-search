@@ -19,7 +19,7 @@ export default function Error({ reset }: { error: Error; reset: () => void }) {
         <button
           type="button"
           onClick={reset}
-          className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition-opacity hover:opacity-85"
+          className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-primary-foreground transition-opacity hover:opacity-85"
         >
           Try again
         </button>

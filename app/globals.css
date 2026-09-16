@@ -1,51 +1,92 @@
 @import "tailwindcss";
 
 /*
-  Three-pane workspace palette. Each pane is a named surface rather than a
-  shade of the page background, so the layout keeps its Apple-Notes reading
-  (tinted sidebar, plain list, plain editor) in both colour schemes.
+  SalesBound NoteSpace — design tokens.
+
+  One light workspace with a deep navy sidebar, per the approved reference.
+  Surfaces are named by role (sidebar, pane, card, workspace) rather than by
+  shade, so a component never has to know which pane it is sitting in.
+
+  The scheme is deliberately single-mode. The reference specifies one look, and
+  a second palette could not be checked against it, so `prefers-color-scheme`
+  is not branched on here.
 */
 :root {
-  --background: #ffffff;
-  --foreground: #1d1d1f;
-  --sidebar: #f3f0f6;
+  /* Workspace */
+  --workspace: #f4f6fb;
   --pane: #ffffff;
-  --divider: rgba(0, 0, 0, 0.11);
-  --selected: #dcd8e2;
-  --muted: rgba(0, 0, 0, 0.5);
-  --accent: #c99a06;
+  --card: #ffffff;
+  --foreground: #0f172a;
+  --muted: #64748b;
+  --border: #e4e8f0;
+  --border-strong: #d3dae6;
+
+  /* Deep navy sidebar */
+  --sidebar: #0e1526;
+  --sidebar-foreground: #e8ecf5;
+  --sidebar-muted: #8b97b0;
+  --sidebar-border: rgba(255, 255, 255, 0.08);
+  --sidebar-hover: rgba(255, 255, 255, 0.06);
+  --sidebar-active: rgba(99, 102, 241, 0.22);
+
+  /* Primary accent */
+  --primary: #1e3a8a;
+  --primary-hover: #1b336f;
+  --primary-foreground: #ffffff;
+  --ring: #6366f1;
+
+  /* Selected note card */
+  --selected: #eef2ff;
+  --selected-border: #c7d2fe;
+
+  --danger: #b91c1c;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-sidebar: var(--sidebar);
+  --color-workspace: var(--workspace);
   --color-pane: var(--pane);
-  --color-divider: var(--divider);
-  --color-selected: var(--selected);
+  --color-card: var(--card);
+  --color-foreground: var(--foreground);
   --color-muted: var(--muted);
-  --color-accent: var(--accent);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-sidebar-active: var(--sidebar-active);
+
+  --color-primary: var(--primary);
+  --color-primary-hover: var(--primary-hover);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ring: var(--ring);
+
+  --color-selected: var(--selected);
+  --color-selected-border: var(--selected-border);
+  --color-danger: var(--danger);
+
+  /* Radius hierarchy: panes read as the largest surface, then cards, then
+     controls, so the layout feels layered rather than uniformly rounded. */
+  --radius-pane: 16px;
+  --radius-card: 12px;
+  --radius-control: 10px;
+
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #1c1c1e;
-    --foreground: #f5f5f7;
-    --sidebar: #252528;
-    --pane: #1c1c1e;
-    --divider: rgba(255, 255, 255, 0.12);
-    --selected: rgba(255, 255, 255, 0.14);
-    --muted: rgba(255, 255, 255, 0.55);
-    --accent: #e6b84c;
-  }
+body {
+  background: var(--workspace);
+  color: var(--foreground);
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
 }
 
-body {
-  background: var(--background);
-  color: var(--foreground);
-  /* System stack: the native look is most of what reads as "Notes". */
-  font-family:
-    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+/* A single visible focus treatment, so keyboard users get the same ring on
+   links, buttons, inputs and selects across both the light and navy panes. */
+:where(a, button, input, select, textarea, summary):focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+  border-radius: 6px;
 }
