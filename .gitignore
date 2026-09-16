@@ -45,3 +45,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Local source capture for docs/final-ui-reference.png; the committed
+# reference is the tracked copy.
+/docs/Note Space.png
