@@ -23,7 +23,12 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      {/*
+        From `md` up the workspace fills the viewport and each pane scrolls on
+        its own, so the document itself must not scroll. Below `md` the panes
+        stack and normal page scrolling returns.
+      */}
+      <body className="h-full md:overflow-hidden">{children}</body>
     </html>
   );
 }

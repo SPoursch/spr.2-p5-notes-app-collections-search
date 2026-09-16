@@ -1,15 +1,14 @@
-import type { Note } from '@/app/lib/db'
+import Link from 'next/link'
 
-import { DeleteNoteButton } from './DeleteNoteButton'
-import { NoteForm } from './NoteForm'
+import type { Note } from '@/app/lib/db'
+import { noteHref } from '@/app/lib/workspace-url'
 
 /**
- * Presentation for a single note. A Server Component: it renders the stored
- * values and delegates only the interactive parts (edit form, delete) to
- * Client Components.
+ * One row in the note list pane.
  *
- * Edit mode uses a native <details> element rather than client-side state, so
- * the card itself never needs to become a Client Component.
+ * A Server Component: the row is a link that puts the note id in the URL, so
+ * selection needs no client-side state. Editing and deleting live in the
+ * editor pane on the right, which is where the selected note is rendered.
  */
 
 /**
@@ -22,7 +21,8 @@ export function displayTitle(title: string | null): string {
   return trimmed && trimmed.length > 0 ? trimmed : 'Untitled'
 }
 
-function formatTimestamp(value: string | null): string | null {
+/** Shared with the selected-note workspace, which renders the same labels. */
+export function formatTimestamp(value: string | null): string | null {
   if (!value) {
     return null
   }
@@ -39,45 +39,55 @@ function formatTimestamp(value: string | null): string | null {
   }).format(date)
 }
 
-export function NoteCard({ note }: { note: Note }) {
+/**
+ * Date only, for the cramped second line of a row where the full timestamp
+ * would crowd out the preview text.
+ */
+function formatRowDate(value: string | null): string | null {
+  if (!value) {
+    return null
+  }
+
+  const date = new Date(value)
+
+  if (Number.isNaN(date.getTime())) {
+    return null
+  }
+
+  return new Intl.DateTimeFormat('en-GB', { dateStyle: 'short' }).format(date)
+}
+
+export function NoteCard({
+  note,
+  selected,
+  activeCollection,
+}: {
+  note: Note
+  selected: boolean
+  activeCollection: string | null
+}) {
   const title = displayTitle(note.title)
   const body = note.body?.trim() ?? ''
   // `updated_at` is null until the note is first edited (a database trigger
   // sets it), so its presence alone identifies an edited note.
-  const edited = formatTimestamp(note.updated_at)
-  const created = formatTimestamp(note.created_at)
-  const timestampLabel = edited
-    ? `Edited ${edited}`
-    : created
-      ? `Created ${created}`
-      : null
+  const rowDate = formatRowDate(note.updated_at ?? note.created_at)
 
   return (
-    <article className="rounded-lg border border-black/10 p-4 dark:border-white/15">
-      <h3 className="text-base font-semibold">{title}</h3>
+    <Link
+      href={noteHref(activeCollection, note.id)}
+      aria-current={selected ? 'true' : undefined}
+      className={`block border-b border-divider px-4 py-2.5 transition-colors ${
+        selected ? 'bg-selected' : 'hover:bg-black/[0.04] dark:hover:bg-white/5'
+      }`}
+    >
+      <h3 className="truncate text-sm font-semibold">{title}</h3>
 
-      {body.length > 0 ? (
-        <p className="mt-2 whitespace-pre-wrap text-sm opacity-90">{body}</p>
-      ) : (
-        <p className="mt-2 text-sm italic opacity-50">No content yet.</p>
-      )}
-
-      {timestampLabel ? (
-        <p className="mt-3 text-xs opacity-60">{timestampLabel}</p>
-      ) : null}
-
-      <div className="mt-4 flex flex-wrap items-center gap-3">
-        <details className="grow">
-          <summary className="cursor-pointer text-sm underline underline-offset-4 opacity-80 hover:opacity-100">
-            Edit
-          </summary>
-          <div className="mt-3 border-t border-black/10 pt-3 dark:border-white/15">
-            <NoteForm mode="edit" note={note} />
-          </div>
-        </details>
-
-        <DeleteNoteButton noteId={note.id} noteLabel={title} />
-      </div>
-    </article>
+      <p className="mt-0.5 flex gap-2 text-xs text-muted">
+        {rowDate ? <span className="shrink-0">{rowDate}</span> : null}
+        <span className="min-w-0 flex-1 truncate">
+          {body.length > 0 ? body : 'No additional text'}
+        </span>
+      </p>
+    </Link>
   )
 }

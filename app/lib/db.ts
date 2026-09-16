@@ -73,6 +73,8 @@ export type Collection = {
 export type CreateNoteInput = {
   title?: string | null
   body?: string | null
+  /** Omitted or null leaves the note outside every collection. */
+  collection_id?: string | null
 }
 
 /** Fields a caller may supply when updating a note. Omitted keys are left alone. */
@@ -154,6 +156,7 @@ export async function createNote(input: CreateNoteInput = {}): Promise<Note> {
     .insert({
       title: input.title ?? null,
       body: input.body ?? null,
+      collection_id: input.collection_id ?? null,
     })
     .select(NOTE_COLUMNS)
     .single()
