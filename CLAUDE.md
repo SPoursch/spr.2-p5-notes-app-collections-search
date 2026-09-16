@@ -9,7 +9,8 @@ Project guidance for Claude Code. Read this before doing anything in this reposi
 A brand-new, locally developed notes application. Notes are stored persistently in
 Supabase and can be organised into collections, labelled with tags, and searched.
 
-There is no existing codebase. The project starts from an empty directory.
+The codebase now exists and is under active development. It was started from an
+empty directory; see "Current state" for what has been built so far.
 
 ## Tech stack
 
@@ -22,15 +23,38 @@ There is no existing codebase. The project starts from an empty directory.
 
 ## Current state
 
-Nothing has been built yet. **This file is the only file that should exist right now.**
+**Step 1 of the implementation sequence — scaffold app + notes CRUD — is
+implemented and committed** on the branch `feature/scaffold-notes-crud`
+(PR #1, open, not yet merged).
+
+What exists:
+
+- A Next.js (App Router) + TypeScript + Tailwind CSS app at the repository root.
+- Supabase client wiring in `app/lib/supabase.ts`, reading credentials from
+  environment variables only, with `.env.local.example` as the committed template.
+- The centralised data access module `app/lib/db.ts`. It is the only module that
+  queries Supabase, and `app/lib/supabase.ts` is imported by nothing else.
+- A `notes` table in Supabase (`id`, `title`, `body`, `created_at`, `updated_at`),
+  documented in `docs/supabase-schema.md`.
+- Create, read, update and delete for notes, driven by Server Actions in
+  `app/lib/actions/notes.ts` and rendered by `app/page.tsx` and `app/components/`.
+
+Core requirements 1 and 2 are satisfied. Requirement 12 is satisfied for the
+notes workspace only; the collection, search and tag empty states arrive with
+their own steps.
 
 ### Hard stops (do not do these yet)
 
-- Do **not** write application code.
-- Do **not** scaffold the Next.js app.
-- Do **not** create database tables.
+Step 1 is done, so its stops are lifted. The stops that remain are the ones
+belonging to later steps:
 
-These stops are lifted one at a time, in the order given under
+- Do **not** create the `collections`, `tags` or `note_tags` tables, or add a
+  `collection_id` column to `notes`, before the step that owns them.
+- Do **not** start step 2 until PR #1 is reviewed and merged, per
+  "Build one feature at a time" under "Workflow rules".
+- Do **not** build the optional feature until all 12 core requirements work.
+
+The remaining stops are lifted one at a time, in the order given under
 "Implementation sequence", and only when the user explicitly asks for that step.
 
 ## Data model
@@ -52,6 +76,8 @@ These stops are lifted one at a time, in the order given under
 
 Exact columns, constraints, indexes and RLS policies are decided when the schema
 step is actually reached — not before.
+The `notes` table has reached that step; its columns and RLS policy are recorded
+in `docs/supabase-schema.md`.
 
 ## Architecture rules
 
