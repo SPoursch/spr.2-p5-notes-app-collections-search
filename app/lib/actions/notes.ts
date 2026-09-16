@@ -3,7 +3,11 @@
 import { revalidatePath } from 'next/cache'
 
 import { createNote, deleteNote, updateNote, NotesDatabaseError } from '../db'
-import type { NoteActionState } from './note-action-state'
+import {
+  failure,
+  success,
+  type NoteActionState,
+} from './note-action-state'
 
 /**
  * Server Actions for the notes CRUD UI.
@@ -21,14 +25,6 @@ const NOTES_PATH = '/'
 
 const MAX_TITLE_LENGTH = 200
 const MAX_BODY_LENGTH = 10_000
-
-function failure(message: string): NoteActionState {
-  return { ok: false, message, at: Date.now() }
-}
-
-function success(): NoteActionState {
-  return { ok: true, message: null, at: Date.now() }
-}
 
 /**
  * Reads a text field from FormData.
