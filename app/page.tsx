@@ -161,13 +161,28 @@ export default async function Page({
 
   // Requirement 11: title and body, case-insensitive, applied after the tag
   // filter so search respects it rather than widening past it.
+  //
+  // Tag names are searched too, which is a superset of what requirement 11
+  // asks for. It means one box finds a note either by what it says or by how
+  // it is labelled, without having to hunt for the tag in the sidebar filter.
+  // The sidebar filter is still the way to narrow by tag precisely, since it
+  // ANDs the selected tags; this matches any one of them as text.
+  //
+  // Each field is matched on its own rather than concatenated into one string.
+  // Joining them would let a query match across a boundary — "test reference"
+  // hitting a note whose body ends "test" and whose first tag is "reference",
+  // a phrase present in neither field.
   if (searchQuery.length > 0) {
     const needle = searchQuery.toLowerCase()
 
     visibleNotes = visibleNotes.filter((note) => {
-      const haystack = `${note.title ?? ''} ${note.body ?? ''}`.toLowerCase()
+      const fields = [
+        note.title ?? '',
+        note.body ?? '',
+        ...(tagsByNote.get(note.id) ?? []).map((tag) => tag.name),
+      ]
 
-      return haystack.includes(needle)
+      return fields.some((field) => field.toLowerCase().includes(needle))
     })
   }
 
@@ -179,7 +194,7 @@ export default async function Page({
         : (namedCollection?.name ?? 'Collection')
 
   return (
-    <div className="flex w-full flex-col md:h-dvh md:flex-row md:overflow-hidden">
+    <div className="flex w-full flex-col bg-workspace md:h-dvh md:flex-row md:overflow-hidden">
       <CollectionSidebar
         collections={collections}
         notes={notes}
@@ -209,7 +224,7 @@ export default async function Page({
         className="flex min-w-0 flex-1 flex-col bg-pane md:h-full md:overflow-y-auto"
       >
         {selectionMissing ? (
-          <p className="border-b border-divider px-8 py-3 text-sm text-muted">
+          <p className="border-b border-border bg-amber-50 px-8 py-3 text-[14px] text-amber-900">
             That note is no longer available. It may have been deleted.
           </p>
         ) : null}
@@ -226,12 +241,19 @@ export default async function Page({
             Requirement 12: no blank pane. Creating a note lives in the list
             pane now, so this says what to do rather than repeating that form.
           */
-          <section aria-label="No note selected" className="max-w-2xl px-8 py-6">
-            <h2 className="text-2xl font-bold tracking-tight">No note selected</h2>
-            <p className="mt-1 text-sm text-muted">
-              Pick a note from the list to read and edit it, or add one with the
-              New note box at the foot of that pane.
-            </p>
+          <section
+            aria-label="No note selected"
+            className="w-full max-w-4xl px-6 py-6 md:px-8"
+          >
+            <div className="rounded-[var(--radius-card)] border border-dashed border-border-strong bg-pane px-6 py-10 text-center">
+              <h2 className="text-[22px] font-bold tracking-tight">
+                No note selected
+              </h2>
+              <p className="mx-auto mt-2 max-w-md text-[15px] leading-relaxed text-muted">
+                Pick a note from the list to read and edit it, or add one with
+                the New note box at the foot of that pane.
+              </p>
+            </div>
           </section>
         )}
       </main>

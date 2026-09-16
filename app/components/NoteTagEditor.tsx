@@ -10,6 +10,8 @@ import {
 import { initialNoteActionState } from '@/app/lib/actions/note-action-state'
 import type { Note, Tag } from '@/app/lib/db'
 
+import { TagDot, tagChipClasses } from './TagChip'
+
 /**
  * Tag area for the note on screen (requirement 9).
  *
@@ -20,7 +22,15 @@ import type { Note, Tag } from '@/app/lib/db'
  * Three small forms rather than one: removing is per-tag, and adding an
  * existing tag and creating a new one are separate submissions with different
  * validation. Each keeps its own message so a failure names what failed.
+ *
+ * Chips use the shared tag palette, so a tag looks the same here as it does on
+ * its card in the list and in the sidebar filter.
  */
+const CONTROL =
+  'min-w-0 rounded-[10px] border border-border bg-pane px-3 py-1.5 text-[14px] outline-none placeholder:text-slate-400 focus:border-ring'
+const CONTROL_BUTTON =
+  'shrink-0 rounded-[10px] border border-border bg-pane px-3 py-1.5 text-[14px] font-semibold transition-colors hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-50'
+
 export function NoteTagEditor({
   note,
   tags,
@@ -49,28 +59,25 @@ export function NoteTagEditor({
   const message = removeState.message ?? addState.message ?? createState.message
 
   return (
-    <section aria-label="Tags" className="flex flex-col gap-2">
-      <h3 className="text-xs font-medium uppercase tracking-wide opacity-60">
-        Tags
-      </h3>
-
+    <section aria-label="Tags" className="flex flex-col gap-3">
       {tags.length === 0 ? (
-        <p className="text-xs text-muted">No tags on this note yet.</p>
+        <p className="text-[14px] text-muted">No tags on this note yet.</p>
       ) : (
-        <ul className="flex flex-wrap gap-1.5">
+        <ul className="flex flex-wrap gap-2">
           {tags.map((tag) => (
             <li key={tag.id}>
               {/* One form per tag: the tag id has to travel with the submit. */}
               <form action={removeAction} className="contents">
                 <input type="hidden" name="noteId" value={note.id} />
                 <input type="hidden" name="tagId" value={tag.id} />
-                <span className="inline-flex items-center gap-1 rounded-full border border-divider px-2 py-0.5 text-xs">
+                <span className={tagChipClasses(tag.name, 'light')}>
+                  <TagDot name={tag.name} />
                   {tag.name}
                   <button
                     type="submit"
                     disabled={removePending}
                     aria-label={`Remove tag ${tag.name}`}
-                    className="leading-none opacity-50 transition-opacity hover:opacity-100 disabled:cursor-not-allowed"
+                    className="ml-0.5 text-[15px] leading-none opacity-60 transition-opacity hover:opacity-100 disabled:cursor-not-allowed"
                   >
                     ×
                   </button>
@@ -81,7 +88,7 @@ export function NoteTagEditor({
         </ul>
       )}
 
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+      <div className="flex flex-wrap items-center gap-2">
         {available.length > 0 ? (
           <form action={addAction} className="flex items-center gap-2">
             <input type="hidden" name="noteId" value={note.id} />
@@ -92,7 +99,7 @@ export function NoteTagEditor({
               id={`add-tag-${note.id}`}
               name="tagId"
               defaultValue=""
-              className="min-w-0 rounded-md border border-black/15 bg-transparent px-2 py-1 text-xs outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50"
+              className={CONTROL}
             >
               <option value="">Add existing tag…</option>
               {available.map((tag) => (
@@ -101,11 +108,7 @@ export function NoteTagEditor({
                 </option>
               ))}
             </select>
-            <button
-              type="submit"
-              disabled={addPending}
-              className="shrink-0 rounded-md border border-divider px-2 py-1 text-xs font-medium transition-colors hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/5"
-            >
+            <button type="submit" disabled={addPending} className={CONTROL_BUTTON}>
               {addPending ? 'Adding…' : 'Add'}
             </button>
           </form>
@@ -123,12 +126,12 @@ export function NoteTagEditor({
             type="text"
             maxLength={50}
             placeholder="New tag"
-            className="min-w-0 flex-1 rounded-md border border-black/15 bg-transparent px-2 py-1 text-xs outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50"
+            className={CONTROL}
           />
           <button
             type="submit"
             disabled={createPending}
-            className="shrink-0 rounded-md border border-divider px-2 py-1 text-xs font-medium transition-colors hover:bg-black/[0.04] disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-white/5"
+            className={CONTROL_BUTTON}
           >
             {createPending ? 'Creating…' : 'Create'}
           </button>
@@ -136,7 +139,7 @@ export function NoteTagEditor({
       </div>
 
       {message ? (
-        <p role="alert" className="text-xs text-red-700 dark:text-red-300">
+        <p role="alert" className="text-[13px] text-danger">
           {message}
         </p>
       ) : null}

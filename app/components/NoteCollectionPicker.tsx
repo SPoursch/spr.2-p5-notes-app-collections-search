@@ -36,7 +36,7 @@ export function NoteCollectionPicker({
 
       <label
         htmlFor={`collection-${note.id}`}
-        className="text-xs font-medium uppercase tracking-wide opacity-60"
+        className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted"
       >
         Collection
       </label>
@@ -51,7 +51,7 @@ export function NoteCollectionPicker({
           id={`collection-${note.id}`}
           name="collectionId"
           defaultValue={note.collection_id ?? ''}
-          className="min-w-0 flex-1 rounded-md border border-black/15 bg-transparent px-2.5 py-1.5 text-sm outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50"
+          className="min-w-0 flex-1 rounded-[10px] border border-border bg-pane px-3 py-2 text-[15px] outline-none focus:border-ring"
         >
           <option value="">No collection</option>
           {collections.map((collection) => (
@@ -64,20 +64,20 @@ export function NoteCollectionPicker({
         <button
           type="submit"
           disabled={pending}
-          className="shrink-0 rounded-md bg-foreground px-2.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-50"
+          className="shrink-0 rounded-[10px] bg-primary px-3.5 py-2 text-[15px] font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {pending ? 'Moving…' : 'Move'}
         </button>
       </div>
 
       {state.message ? (
-        <p role="alert" className="text-xs text-red-700 dark:text-red-300">
+        <p role="alert" className="text-[13px] text-danger">
           {state.message}
         </p>
       ) : null}
 
       {state.ok ? (
-        <p aria-live="polite" className="text-xs text-muted">
+        <p aria-live="polite" className="text-[13px] text-muted">
           Moved.
         </p>
       ) : null}

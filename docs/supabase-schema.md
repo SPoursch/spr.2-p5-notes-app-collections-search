@@ -268,9 +268,22 @@ database change — no columns, no indexes, no full-text search configuration.
 Both operate in memory in `app/page.tsx` on rows that request has already
 loaded: `listNotes()`, `listCollections()`, `listTags()` and `listTagsByNote()`
 run once per request, and the collection filter, the AND-combined tag filter and
-the title/body search are then applied to those arrays. Selected filters live in
-the URL (`collection`, `tag`, `q`), so no query runs per keystroke and no query
-runs per note.
+the search are then applied to those arrays. Selected filters live in the URL
+(`collection`, `tag`, `q`), so no query runs per keystroke and no query runs per
+note.
+
+Search covers a note's **title, its body, and each of its tag names**. Tag names
+are included as the project's optional feature: it means one box finds a note
+either by what it says or by how it is labelled, without having to locate the
+tag in the sidebar filter. Requirement 11 asks only for titles and bodies, so
+this is a superset of it, and the sidebar filter remains the precise way to
+narrow by tag because it combines selected tags with AND.
+
+Each field is matched separately rather than concatenated into one string. A
+joined haystack would report a match for a query that merely spans the boundary
+between two fields — "test reference" hitting a note whose body ends "test" and
+whose first tag is "reference", a phrase present in neither. Matching per field
+keeps substring search inside each value.
 
 This is deliberate at this project's scale. It would stop being appropriate once
 the note count outgrows a single request payload, at which point the honest

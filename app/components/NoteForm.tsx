@@ -44,7 +44,7 @@ export function NoteForm({ mode, note }: NoteFormProps) {
       <div className="flex flex-col gap-1">
         <label
           htmlFor={`${idPrefix}-title`}
-          className="text-xs font-medium uppercase tracking-wide opacity-70"
+          className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted"
         >
           Title
         </label>
@@ -56,14 +56,14 @@ export function NoteForm({ mode, note }: NoteFormProps) {
           // `?? ''` matters: a null value would make this an uncontrolled input.
           defaultValue={note?.title ?? ''}
           placeholder="Untitled"
-          className="rounded-md border border-black/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50"
+          className="rounded-[10px] border border-border bg-pane px-3 py-2 text-[15px] outline-none placeholder:text-slate-400 focus:border-ring"
         />
       </div>
 
       <div className="flex flex-col gap-1">
         <label
           htmlFor={`${idPrefix}-body`}
-          className="text-xs font-medium uppercase tracking-wide opacity-70"
+          className="text-[13px] font-semibold uppercase tracking-[0.08em] text-muted"
         >
           Note
         </label>
@@ -74,7 +74,7 @@ export function NoteForm({ mode, note }: NoteFormProps) {
           maxLength={10000}
           defaultValue={note?.body ?? ''}
           placeholder="Write something…"
-          className="resize-y rounded-md border border-black/15 bg-transparent px-3 py-2 text-sm outline-none focus:border-black/40 dark:border-white/20 dark:focus:border-white/50"
+          className="resize-y rounded-[10px] border border-border bg-pane px-3 py-2 text-[15px] leading-relaxed outline-none placeholder:text-slate-400 focus:border-ring"
         />
       </div>
 
@@ -82,7 +82,7 @@ export function NoteForm({ mode, note }: NoteFormProps) {
         <p
           role="alert"
           aria-live="polite"
-          className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700 dark:bg-red-950/40 dark:text-red-300"
+          className="rounded-[10px] border border-red-200 bg-red-50 px-3 py-2 text-[14px] text-danger"
         >
           {state.message}
         </p>
@@ -92,7 +92,7 @@ export function NoteForm({ mode, note }: NoteFormProps) {
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-foreground px-4 py-2 text-sm font-medium text-background transition-opacity hover:opacity-85 disabled:cursor-not-allowed disabled:opacity-50"
+          className="rounded-[10px] bg-primary px-4 py-2 text-[15px] font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50"
         >
           {pending
             ? mode === 'create'
@@ -104,7 +104,7 @@ export function NoteForm({ mode, note }: NoteFormProps) {
         </button>
 
         {state.ok && mode === 'edit' ? (
-          <span aria-live="polite" className="text-sm opacity-70">
+          <span aria-live="polite" className="text-[14px] text-muted">
             Saved.
           </span>
         ) : null}
