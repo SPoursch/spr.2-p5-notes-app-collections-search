@@ -1,5 +1,13 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Final UI
+
+SalesBound NoteSpace — the three-pane workspace: collections tree, note list, and the
+editor for the selected note, with tag filtering and search across titles, bodies and
+tag names.
+
+![NoteSpace final UI](docs/final-ui-reference.png)
+
 ## Getting Started
 
 First, run the development server:
