@@ -1,11 +1,15 @@
 # Reflection — Part 5 Review Evidence
 
-Review record for **PR #1 "Add notes CRUD with centralized Supabase access"**
-(branch `feature/scaffold-notes-crud`, open, not merged).
+Review record for the three pull requests that make up Part 5. Sections 1 to 4 cover
+**PR #1 "Add notes CRUD with centralized Supabase access"** (branch
+`feature/scaffold-notes-crud`), **merged into `main` as merge commit `522c082`**.
+Sections 5 and 6 cover PR #2 and PR #3.
 
-Every finding was **open** when this record was first written. One has since been fixed:
-the nullable / two-clock timestamp design, resolved in commit `f79ecb4` (details under
-"Resolution" in section 3b). All other findings below remain open.
+Every finding was **open** when this record was first written. Three have since been
+fixed and are marked inline below: the nullable / two-clock timestamp design (`f79ecb4`,
+section 3b), the stale UI after a missing-row mutation (`eb053be`, finding a), and the
+duplicated Supabase select column lists (`0756414`, finding d). Finding c is mitigated
+rather than closed, and finding e remains open.
 
 ## 1. Fresh-session Claude Code review
 
@@ -54,10 +58,22 @@ Required by CLAUDE.md: "At least one PR must be reviewed with a third-party slas
 
 ### Most important findings
 
-a. **Stale UI after update or delete when the row is missing.** `revalidatePath` is called
-   only on the success path in `app/lib/actions/notes.ts`; the branches that handle a
-   missing row return an error message and skip it. The user is told the note no longer
-   exists while still looking at its card, which remains rendered until a manual reload.
+a. **Stale UI after update or delete when the row is missing — FIXED in `eb053be`.**
+   `revalidatePath` was called only on the success path in `app/lib/actions/notes.ts`; the
+   branches that handle a missing row returned an error message and skipped it. The user
+   was told the note no longer exists while still looking at its card, which remained
+   rendered until a manual reload.
+
+   **Resolution.** `revalidatePath` was moved above the missing-row check in both
+   `updateNoteAction` and `deleteNoteAction`, so both outcomes refresh the list.
+
+   **Verified in a real browser**, because the discriminating path is the client-side
+   Server Action fetch: after removing a row externally, the stale card disappeared
+   without a reload (3 → 2 cards, one page navigation). The same check showed the
+   trade-off this fix makes — the component that renders the failure message lives inside
+   the card that revalidation removes, so the message is no longer displayed. For a
+   delete that reads as success; for a failed update the user is told nothing. Recorded
+   here rather than hidden: the contradiction was replaced by a silent outcome.
 
 b. **Nullable / two-clock timestamp design — FIXED in `f79ecb4`.** Independently reached by
    the fresh-session review (section 1). Because `updated_at` was written on create as well
@@ -79,14 +95,26 @@ b. **Nullable / two-clock timestamp design — FIXED in `f79ecb4`.** Independent
    "Created". `npx tsc --noEmit`, `npm run lint` and `npm run build` all pass. Temporary
    notes created for the check were deleted afterwards.
 
-c. **`undefined`-vs-omitted `UpdateNoteInput` trap.** Independently reached by
-   `/code-review` (section 2). `exactOptionalPropertyTypes` is not enabled, so an optional
-   property that is present and `undefined` is indistinguishable by type from an absent
-   one, while the runtime `in` check treats them oppositely.
+c. **`undefined`-vs-omitted `UpdateNoteInput` trap — MITIGATED, not closed.** Independently
+   reached by `/code-review` (section 2). `exactOptionalPropertyTypes` is not enabled, so an
+   optional property that is present and `undefined` is indistinguishable by type from an
+   absent one, while the runtime `in` check treats them oppositely.
 
-d. **Duplicated Supabase select column lists.** The literal column list is repeated across
-   the query functions in `app/lib/db.ts`, and each result is asserted with a cast rather
-   than validated. Adding a column and missing one of the copies is not a compile error.
+   **Mitigation.** The review predicted Step 2's "assign a note to a collection" would be
+   the first caller to exercise the protocol. That path was therefore built as
+   `setNoteCollection(noteId, collectionId)` with a **required** `string | null`
+   parameter (`0756414`), which has no optional-property semantics and cannot express the
+   ambiguity. The underlying gap is unchanged: `exactOptionalPropertyTypes` is still
+   unset, so `UpdateNoteInput` remains vulnerable to any future partial update.
+
+d. **Duplicated Supabase select column lists — FIXED in `0756414`.** The literal column
+   list was repeated across the query functions in `app/lib/db.ts`, and each result is
+   asserted with a cast rather than validated. Adding a column and missing one of the
+   copies would not have been a compile error.
+
+   **Resolution.** The list was extracted to a single `NOTE_COLUMNS` constant used by every
+   `notes` query, with `COLLECTION_COLUMNS` and `TAG_COLUMNS` following the same pattern as
+   those tables arrived. The casts remain, so the constant is what prevents drift.
 
 e. **Missing explicit server-only boundary in `app/lib/db.ts`.** The module is reached only
    from server code today, and the Supabase credentials are confirmed absent from the
@@ -134,3 +162,93 @@ boundary both get harder to correct as more tables and components accumulate. Ea
 is cheap to change now, while there is one table and a handful of call sites, and expensive
 once collections and tags depend on them — so the foundations should be settled before
 Step 2 begins rather than after.
+
+## 5. PR #2 — collections, tags and search (Steps 2 to 4)
+
+**Scope.** Step 2 (the `collections` table, `notes.collection_id`, create and assign
+collections, the collections sidebar), Step 3 (the `tags` and `note_tags` tables, add and
+remove tags on a note, tags on each note row) and Step 4 (tag filtering with AND logic,
+and search across note titles and bodies). 21 files, +2332 / −158.
+
+**Reviewed before merge**, satisfying CLAUDE.md's "Diff review before every merge". The
+review checked the 12 core requirements individually, that Supabase access stayed inside
+`app/lib/db.ts`, that the Notes CRUD from PR #1 had not regressed, and that no unrelated
+files were included. `git diff --check`, `npx tsc --noEmit`, `npm run lint` and
+`npm run build` all passed, and filtering and search were exercised against a
+deterministic fixture covering no filter, one tag, two tags combined with AND, cleared
+tags, title search, body search, search combined with a tag filter, and the empty states
+for no search match and no tag match.
+
+**Merged into `main` as merge commit `f9494ef`.**
+
+### Findings — none blocking, all recorded rather than fixed
+
+- **Creating a note accepts a title but no body.** The new-note control has a title field
+  only; content is added afterwards through Edit. A reduction from the create form PR #1
+  shipped.
+- **`NoteForm`'s `mode="create"` branch became dead code** once `NewNoteForm` replaced it.
+  Lint cannot flag it, because it is a used export.
+- **The Geist fonts are loaded but never rendered** — the `body` font stack in
+  `app/globals.css` overrides the mapping, so both families are fetched on every cold load
+  for nothing.
+- **`app/layout.tsx` metadata is still `"Create Next App"`**, so that is the browser tab
+  title of the submitted project.
+- **`NoteActionState` still admits `{ ok: false, message: null }`** — a failure that
+  renders as nothing at all in every consumer. Only the private `failure`/`success`
+  constructors keep that state from occurring; the type permits it.
+- **`listTagsByNote()` fetches every note-to-tag pairing unbounded.** Correct at this
+  project's scale and deliberately one query rather than one per row, but it would need
+  pagination alongside the notes query before the data grew.
+- **Assigning a collection or a tag fires the `notes_set_updated_at` trigger**, so moving a
+  note marks it as edited. A consequence of the PR #1 timestamp fix, not a defect in it.
+
+## 6. PR #3 — optional feature and final product pass
+
+**Scope.** The Part 5 optional feature — workspace search also matching a note's tag
+names, so a note can be found by how it is labelled — together with the final visual pass:
+SalesBound / NoteSpace branding, semantic tag colours, a named-token colour system,
+larger type, rounded surfaces and layout refinements. 22 files, +708 / −289.
+
+The optional feature was built on its own branch, `feature/tag-search`, and merged through
+a pull request, as the assignment requires.
+
+**Search matches each field separately** rather than concatenating title, body and tag
+names into one string. The joined form reported a match for a query that merely spanned a
+field boundary — "test reference" hitting a note whose body ends "test" and whose first
+tag is "reference", a phrase present in neither field. That false positive was found by
+review, reproduced against the running app, and fixed; the same change closed the
+identical artefact that already existed at the title/body seam.
+
+**The required pre-merge diff review was performed.** It confirmed all 12 core
+requirements still pass, that `app/lib/db.ts`, `app/lib/actions/` and
+`app/lib/workspace-url.ts` carry no changes in the PR — so no query, mutation or routing
+behaviour could have shifted — and that every `'use client'` component importing from
+`db.ts` uses `import type` only, keeping the Supabase client out of the browser bundle.
+`git diff --check`, `npx tsc --noEmit`, `npm run lint` and `npm run build` all passed, and
+the palette rename was audited for orphaned tokens.
+
+**Merged into `main` as merge commit `e301457`.**
+
+### Findings
+
+- **`CLAUDE.md` "Current state" was stale** — it still described Steps 2 to 4 as unmerged
+  work on `feature/collections` after PR #2 had merged, and still carried a hard stop
+  against building the optional feature that Step 5 had already done. Corrected in commit
+  **`691925b`**, which is part of PR #3.
+- **Nested interactive content in the sidebar.** `CollectionSidebar.tsx` places a `<Link>`
+  inside `<summary>`, which carries an implicit button role, so an anchor inside it is
+  invalid interactive-content nesting. It works — one click both expands the group and
+  points the list pane at the collection — but keyboard and screen-reader behaviour is
+  ambiguous. Not fixed.
+- **`<details key={...open}>` is a deliberate remount hack**, making the server-computed
+  open state win over whatever the native toggle left behind. Correct and commented, but
+  load-bearing: removing the key would let a freshly selected collection render collapsed.
+
+### Scope of the visual review
+
+The visual direction was **approved by the user**, who supplied the design reference and
+accepted the result. No independent visual review was carried out: the reference image was
+never accessible in the review environment, so the pre-merge review covered the code's
+correctness, requirement coverage and architecture only — not whether the rendered UI
+matches the approved design. That judgement was the user's throughout, and is recorded
+here rather than implied to be a review finding.
