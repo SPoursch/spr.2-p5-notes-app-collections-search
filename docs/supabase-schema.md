@@ -117,10 +117,25 @@ makes a blocked read look indistinguishable from an empty table.
 
 ### Why this is limited to this learning project
 
-`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is a `NEXT_PUBLIC_` variable, so it is
-bundled into the browser JavaScript and readable by anyone who loads the page.
-Combined with `USING (true)` and `WITH CHECK (true)`, that means anyone holding
-the project URL and that key can read and write every row in `notes`.
+Combined with `USING (true)` and `WITH CHECK (true)`, this policy means that
+anyone holding the project URL and the publishable key can read and write every
+row in `notes`, straight against the REST API and bypassing the app entirely.
+
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` carries the `NEXT_PUBLIC_` prefix, which
+marks a variable as client-exposed: Next.js inlines such a variable into the
+browser bundle wherever client-side code references it. At present nothing does
+— both variables are read only by `app/lib/supabase.ts`, which is reached solely
+from server code, so the key is not currently in the browser bundle. The prefix
+nonetheless makes that exposure one value-import away: a client component
+importing a value (not just a type) from `app/lib/db.ts` would ship the key to
+the browser, with no build warning.
+
+The rule that follows is about which keys may carry the prefix at all. A
+publishable (anon) key is designed to be public and is safe to expose, provided
+RLS policies actually constrain what it can do — which is exactly what the
+blanket policy above does not do. A secret or `service_role` key bypasses RLS
+completely and must **never** be placed in a `NEXT_PUBLIC_` variable, or in any
+value reachable from client code.
 
 That is an accepted, deliberate trade-off for a local, single-developer learning
 project holding no real user data. It is **not** a pattern to carry into

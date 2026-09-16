@@ -24,8 +24,8 @@ empty directory; see "Current state" for what has been built so far.
 ## Current state
 
 **Step 1 of the implementation sequence — scaffold app + notes CRUD — is
-implemented and committed** on the branch `feature/scaffold-notes-crud`
-(PR #1, open, not yet merged).
+implemented and merged.** It was built on the branch `feature/scaffold-notes-crud`
+and merged into `main` as PR #1, merge commit `522c082`.
 
 What exists:
 
@@ -45,14 +45,15 @@ their own steps.
 
 ### Hard stops (do not do these yet)
 
-Step 1 is done, so its stops are lifted. The stops that remain are the ones
-belonging to later steps:
+Step 1 is done and merged, so its stops are lifted — including the one that held
+step 2 back until PR #1 was merged. The stops that remain belong to later steps:
 
-- Do **not** create the `collections`, `tags` or `note_tags` tables, or add a
-  `collection_id` column to `notes`, before the step that owns them.
-- Do **not** start step 2 until PR #1 is reviewed and merged, per
-  "Build one feature at a time" under "Workflow rules".
+- Do **not** create the `tags` or `note_tags` tables before step 3, which owns
+  them.
 - Do **not** build the optional feature until all 12 core requirements work.
+
+Step 2 owns the `collections` table and the `collection_id` column on `notes`, so
+those are no longer barred.
 
 The remaining stops are lifted one at a time, in the order given under
 "Implementation sequence", and only when the user explicitly asks for that step.
