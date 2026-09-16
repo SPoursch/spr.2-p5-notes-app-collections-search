@@ -1,26 +1,51 @@
 @import "tailwindcss";
 
+/*
+  Three-pane workspace palette. Each pane is a named surface rather than a
+  shade of the page background, so the layout keeps its Apple-Notes reading
+  (tinted sidebar, plain list, plain editor) in both colour schemes.
+*/
 :root {
   --background: #ffffff;
-  --foreground: #171717;
+  --foreground: #1d1d1f;
+  --sidebar: #f3f0f6;
+  --pane: #ffffff;
+  --divider: rgba(0, 0, 0, 0.11);
+  --selected: #dcd8e2;
+  --muted: rgba(0, 0, 0, 0.5);
+  --accent: #c99a06;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-sidebar: var(--sidebar);
+  --color-pane: var(--pane);
+  --color-divider: var(--divider);
+  --color-selected: var(--selected);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #1c1c1e;
+    --foreground: #f5f5f7;
+    --sidebar: #252528;
+    --pane: #1c1c1e;
+    --divider: rgba(255, 255, 255, 0.12);
+    --selected: rgba(255, 255, 255, 0.14);
+    --muted: rgba(255, 255, 255, 0.55);
+    --accent: #e6b84c;
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* System stack: the native look is most of what reads as "Notes". */
+  font-family:
+    -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
 }

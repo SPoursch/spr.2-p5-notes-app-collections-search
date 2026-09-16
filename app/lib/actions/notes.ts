@@ -3,7 +3,11 @@
 import { revalidatePath } from 'next/cache'
 
 import { createNote, deleteNote, updateNote, NotesDatabaseError } from '../db'
-import type { NoteActionState } from './note-action-state'
+import {
+  failure,
+  success,
+  type NoteActionState,
+} from './note-action-state'
 
 /**
  * Server Actions for the notes CRUD UI.
@@ -21,14 +25,6 @@ const NOTES_PATH = '/'
 
 const MAX_TITLE_LENGTH = 200
 const MAX_BODY_LENGTH = 10_000
-
-function failure(message: string): NoteActionState {
-  return { ok: false, message, at: Date.now() }
-}
-
-function success(): NoteActionState {
-  return { ok: true, message: null, at: Date.now() }
-}
 
 /**
  * Reads a text field from FormData.
@@ -62,6 +58,32 @@ function readNoteId(formData: FormData): string | null {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)
 
   return isUuid ? id : null
+}
+
+/**
+ * Reads the optional collection a new note should be filed under.
+ *
+ * An absent or empty field means "no collection", which is a legitimate choice
+ * rather than a validation error: requirement 4 allows a note to sit outside
+ * any collection. A non-empty value that is not a uuid is rejected, so a
+ * tampered form cannot reach the database with junk.
+ */
+function readOptionalCollectionId(
+  formData: FormData,
+): { collectionId: string | null } | { error: string } {
+  const raw = formData.get('collectionId')
+  const value = typeof raw === 'string' ? raw.trim() : ''
+
+  if (value.length === 0) {
+    return { collectionId: null }
+  }
+
+  const isUuid =
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(value)
+
+  return isUuid
+    ? { collectionId: value }
+    : { error: 'That collection could not be identified.' }
 }
 
 /**
@@ -115,8 +137,14 @@ export async function createNoteAction(
     return failure(validated.error)
   }
 
+  const collection = readOptionalCollectionId(formData)
+
+  if ('error' in collection) {
+    return failure(collection.error)
+  }
+
   try {
-    await createNote(validated)
+    await createNote({ ...validated, collection_id: collection.collectionId })
   } catch (error) {
     return failure(toSafeMessage(error, 'Could not create the note. Please try again.'))
   }

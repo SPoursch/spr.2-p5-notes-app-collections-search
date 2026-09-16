@@ -117,10 +117,25 @@ makes a blocked read look indistinguishable from an empty table.
 
 ### Why this is limited to this learning project
 
-`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` is a `NEXT_PUBLIC_` variable, so it is
-bundled into the browser JavaScript and readable by anyone who loads the page.
-Combined with `USING (true)` and `WITH CHECK (true)`, that means anyone holding
-the project URL and that key can read and write every row in `notes`.
+Combined with `USING (true)` and `WITH CHECK (true)`, this policy means that
+anyone holding the project URL and the publishable key can read and write every
+row in `notes`, straight against the REST API and bypassing the app entirely.
+
+`NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` carries the `NEXT_PUBLIC_` prefix, which
+marks a variable as client-exposed: Next.js inlines such a variable into the
+browser bundle wherever client-side code references it. At present nothing does
+— both variables are read only by `app/lib/supabase.ts`, which is reached solely
+from server code, so the key is not currently in the browser bundle. The prefix
+nonetheless makes that exposure one value-import away: a client component
+importing a value (not just a type) from `app/lib/db.ts` would ship the key to
+the browser, with no build warning.
+
+The rule that follows is about which keys may carry the prefix at all. A
+publishable (anon) key is designed to be public and is safe to expose, provided
+RLS policies actually constrain what it can do — which is exactly what the
+blanket policy above does not do. A secret or `service_role` key bypasses RLS
+completely and must **never** be placed in a `NEXT_PUBLIC_` variable, or in any
+value reachable from client code.
 
 That is an accepted, deliberate trade-off for a local, single-developer learning
 project holding no real user data. It is **not** a pattern to carry into
@@ -151,7 +166,120 @@ than now.
 
 This document is updated as each of those steps lands.
 
+## Tags
+
+**Status: created and verified in Supabase.** The statements below were run by
+hand in the Supabase SQL Editor (no MCP server is configured) and the result was
+verified against the live database: both tables are reachable by `anon`, `id`
+and `created_at` take their defaults, `tags.name` rejects null (`23502`), the
+composite primary key rejects a duplicate pairing (`23505`), an unknown
+`tag_id` is rejected (`23503`), and both `on delete cascade` rules were
+confirmed in each direction — deleting a tag or a note removes only the pairing
+rows, never the row on the other side.
+
+These satisfy core requirement 5: a `tags` table of names, and a `note_tags`
+join table where each row connects one note to one tag.
+
+### DDL to execute
+
+```sql
+-- 1. tags — names only, same column conventions as collections.
+create table public.tags (
+  id         uuid        not null default gen_random_uuid(),
+  name       text        not null,
+  created_at timestamptz not null default now(),
+  constraint tags_pkey primary key (id)
+);
+
+-- 2. note_tags — one row per (note, tag) pair.
+-- The composite primary key makes a duplicate pairing impossible at the
+-- database level, so the application never has to de-duplicate.
+-- Both foreign keys cascade: deleting a note or a tag removes only the
+-- pairings, never the row on the other side.
+create table public.note_tags (
+  note_id uuid not null,
+  tag_id  uuid not null,
+  constraint note_tags_pkey primary key (note_id, tag_id),
+  constraint note_tags_note_id_fkey foreign key (note_id)
+    references public.notes (id) on delete cascade,
+  constraint note_tags_tag_id_fkey foreign key (tag_id)
+    references public.tags (id) on delete cascade
+);
+
+-- 3. Row Level Security. Tables created through the SQL Editor do not get RLS
+-- enabled automatically, unlike dashboard-created tables, so this is explicit.
+alter table public.tags      enable row level security;
+alter table public.note_tags enable row level security;
+
+-- 4. One permissive anon policy per table, matching notes and collections.
+create policy "anon full access to tags"
+  on public.tags
+  for all
+  to anon
+  using (true)
+  with check (true);
+
+create policy "anon full access to note_tags"
+  on public.note_tags
+  for all
+  to anon
+  using (true)
+  with check (true);
+```
+
+### Verification queries
+
+```sql
+select table_name, column_name, data_type, is_nullable, column_default
+from information_schema.columns
+where table_schema = 'public' and table_name in ('tags', 'note_tags')
+order by table_name, ordinal_position;
+
+select tablename, policyname, roles, cmd, qual, with_check
+from pg_policies
+where schemaname = 'public' and tablename in ('tags', 'note_tags');
+
+select conname, contype, confdeltype
+from pg_constraint
+where conrelid = 'public.note_tags'::regclass;
+```
+
+Expect: three columns on `tags` and two on `note_tags`, all `not null`; exactly
+one `ALL`/`{anon}` policy per table; and on `note_tags` a primary key plus two
+foreign keys with `confdeltype = 'c'` (cascade).
+
+### Notes on this design
+
+- `tags.name` has **no unique constraint**. Requirement 5 does not ask for one,
+  and adding it would make "create a tag that already exists" a database error
+  the UI would have to translate. Duplicate names are therefore possible.
+- No index beyond the two primary keys. The `note_tags` primary key already
+  indexes `(note_id, tag_id)`, which covers looking a note's tags up; the
+  reverse direction (tag to notes) is unindexed and would matter only for the
+  tag filtering in requirement 10.
+- The permissive `anon` policy carries the same trade-off documented for `notes`
+  above: acceptable for this local learning project, not for anything deployed.
+
+## Tag filtering and search add no schema
+
+Core requirements 10 (tag filtering) and 11 (search) are implemented without any
+database change — no columns, no indexes, no full-text search configuration.
+
+Both operate in memory in `app/page.tsx` on rows that request has already
+loaded: `listNotes()`, `listCollections()`, `listTags()` and `listTagsByNote()`
+run once per request, and the collection filter, the AND-combined tag filter and
+the title/body search are then applied to those arrays. Selected filters live in
+the URL (`collection`, `tag`, `q`), so no query runs per keystroke and no query
+runs per note.
+
+This is deliberate at this project's scale. It would stop being appropriate once
+the note count outgrows a single request payload, at which point the honest
+alternatives are `ilike` or `textSearch` filters pushed into Postgres for
+requirement 11, an index on `note_tags(tag_id)` for the tag-to-notes direction,
+and pagination. None of that is warranted yet, and adding it now would be
+speculative.
+
 ## Not yet decided
 
 - Indexes are recorded here once they are deliberately chosen. None have been added
-  beyond the primary key.
+  beyond the primary keys.
