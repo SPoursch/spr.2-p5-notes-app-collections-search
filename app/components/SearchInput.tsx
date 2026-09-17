@@ -3,6 +3,8 @@
 import { useRouter, useSearchParams } from 'next/navigation'
 import { useEffect, useState } from 'react'
 
+import { WORKSPACE_PATH } from '@/app/lib/workspace-url'
+
 /**
  * Search box for the top of the notes pane (requirement 11).
  *
@@ -55,7 +57,10 @@ export function SearchInput({ query }: { query: string }) {
 
       const search = next.toString()
 
-      router.replace(search.length > 0 ? `/?${search}` : '/', { scroll: false })
+      router.replace(
+        search.length > 0 ? `${WORKSPACE_PATH}?${search}` : WORKSPACE_PATH,
+        { scroll: false },
+      )
     }, DEBOUNCE_MS)
 
     return () => clearTimeout(timer)

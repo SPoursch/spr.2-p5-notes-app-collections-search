@@ -8,6 +8,7 @@ import {
   success,
   type NoteActionState,
 } from './note-action-state'
+import { requireUser } from './require-auth'
 
 /**
  * Server Actions for the notes CRUD UI.
@@ -21,7 +22,7 @@ import {
  * database row or error.
  */
 
-const NOTES_PATH = '/'
+const NOTES_PATH = '/workspace'
 
 const MAX_TITLE_LENGTH = 200
 const MAX_BODY_LENGTH = 10_000
@@ -131,6 +132,14 @@ export async function createNoteAction(
   _prevState: NoteActionState,
   formData: FormData,
 ): Promise<NoteActionState> {
+  // Authorise before anything else: an unauthenticated caller must not
+  // reach validation, the database, or any message that reveals either.
+  const denied = await requireUser()
+
+  if (denied) {
+    return denied
+  }
+
   const validated = validateContent(formData)
 
   if ('error' in validated) {
@@ -158,6 +167,14 @@ export async function updateNoteAction(
   _prevState: NoteActionState,
   formData: FormData,
 ): Promise<NoteActionState> {
+  // Authorise before anything else: an unauthenticated caller must not
+  // reach validation, the database, or any message that reveals either.
+  const denied = await requireUser()
+
+  if (denied) {
+    return denied
+  }
+
   const id = readNoteId(formData)
 
   if (id === null) {
@@ -194,6 +211,14 @@ export async function deleteNoteAction(
   _prevState: NoteActionState,
   formData: FormData,
 ): Promise<NoteActionState> {
+  // Authorise before anything else: an unauthenticated caller must not
+  // reach validation, the database, or any message that reveals either.
+  const denied = await requireUser()
+
+  if (denied) {
+    return denied
+  }
+
   const id = readNoteId(formData)
 
   if (id === null) {

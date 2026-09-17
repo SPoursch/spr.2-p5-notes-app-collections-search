@@ -9,6 +9,7 @@ import {
   NotesDatabaseError,
 } from '../db'
 import { failure, success, type NoteActionState } from './note-action-state'
+import { requireUser } from './require-auth'
 
 /**
  * Server Actions for tags (requirements 5 and 9).
@@ -24,7 +25,7 @@ import { failure, success, type NoteActionState } from './note-action-state'
  */
 
 /** Tags render on the same route as everything else, so one path covers all. */
-const TAGS_PATH = '/'
+const TAGS_PATH = '/workspace'
 
 const MAX_NAME_LENGTH = 50
 
@@ -75,6 +76,14 @@ export async function createTagAction(
   _prevState: NoteActionState,
   formData: FormData,
 ): Promise<NoteActionState> {
+  // Authorise before anything else: an unauthenticated caller must not
+  // reach validation, the database, or any message that reveals either.
+  const denied = await requireUser()
+
+  if (denied) {
+    return denied
+  }
+
   const raw = formData.get('name')
   const name = typeof raw === 'string' ? raw.trim() : ''
 
@@ -125,6 +134,14 @@ export async function addTagToNoteAction(
   _prevState: NoteActionState,
   formData: FormData,
 ): Promise<NoteActionState> {
+  // Authorise before anything else: an unauthenticated caller must not
+  // reach validation, the database, or any message that reveals either.
+  const denied = await requireUser()
+
+  if (denied) {
+    return denied
+  }
+
   const noteId = readUuid(formData, 'noteId')
 
   if (noteId === null) {
@@ -156,6 +173,14 @@ export async function removeTagFromNoteAction(
   _prevState: NoteActionState,
   formData: FormData,
 ): Promise<NoteActionState> {
+  // Authorise before anything else: an unauthenticated caller must not
+  // reach validation, the database, or any message that reveals either.
+  const denied = await requireUser()
+
+  if (denied) {
+    return denied
+  }
+
   const noteId = readUuid(formData, 'noteId')
 
   if (noteId === null) {

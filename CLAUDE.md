@@ -4,7 +4,12 @@ Project guidance for Claude Code. Read this before doing anything in this reposi
 
 ## Project
 
-**Turing College — Build with AI, Sprint 2, Part 5: "Notes App with Collections and Search".**
+**Turing College — Build with AI, Sprint 2.**
+
+- **Part 5 — "Notes App with Collections and Search".** Complete and merged.
+- **Part 6 — authentication.** Active. Sign-in, session handling and a protected
+  `/workspace` area are now in scope. See "Authentication rules" under
+  "Architecture rules".
 
 A brand-new, locally developed notes application. Notes are stored persistently in
 Supabase and can be organised into collections, labelled with tags, and searched.
@@ -29,10 +34,29 @@ Step 1 (scaffold + notes CRUD) was merged into `main` as PR #1, merge commit
 plus search — were built on `feature/collections` and merged into `main` as
 PR #2. `main` is at merge commit `f9494ef`.
 
-**Step 5, the optional feature, is implemented and open for review.** Tag-name
-search — the workspace search also matching a note's tag names, alongside a
-final visual pass — is on `feature/tag-search` as **PR #3**, which has passed
-its pre-merge diff review and is not yet merged.
+**Step 5, the optional feature, is implemented and merged.** Tag-name search —
+the workspace search also matching a note's tag names, alongside a final visual
+pass — was built on `feature/tag-search` and merged into `main` as **PR #3**,
+merge commit `e301457`, after its pre-merge diff review.
+
+**Part 5 is therefore complete, and Part 6 — authentication — is implemented on
+`feature/add-auth`,** which is not yet merged. The rules that govern it are
+"Authentication rules" under "Architecture rules", and it is step 6 of the
+implementation sequence.
+
+What Part 6 adds:
+
+- Supabase Auth for email/password sign-up, sign-in and sign-out, and for
+  Google sign-in. The Google provider is configured in the Supabase dashboard
+  and has been signed in with successfully.
+- `/workspace` is protected on the server: a request with no authenticated user
+  is redirected to `/login` before the page renders.
+- Row level security on `collections`, `notes`, `tags` and `note_tags` is now
+  restricted to the `authenticated` role.
+- Manual end-to-end authentication testing has passed.
+- The Supabase Security Advisor reports 0 errors and 6 warnings. Those warnings
+  are known and deliberately deferred; none of them blocks this Part 6
+  checkpoint.
 
 Steps 3 and 4 were developed on the same branch as step 2 rather than one branch
 each, and step 2 was not merged before step 3 began. That is a deliberate,
@@ -64,18 +88,24 @@ schema: tag filtering and search operate on rows already loaded per request.
 
 ### Hard stops (do not do these yet)
 
-Steps 1 to 4 are implemented and merged, so every schema stop is lifted:
-`collections`, `notes.collection_id`, `tags` and `note_tags` all exist and are
-documented in `docs/supabase-schema.md`.
+**Every Part 5 stop is lifted.** Steps 1 to 4 are implemented and merged, so the
+schema stops are gone: `collections`, `notes.collection_id`, `tags` and
+`note_tags` all exist and are documented in `docs/supabase-schema.md`. The stop
+on the optional feature is gone as well: all 12 core requirements were confirmed
+working before step 5 began, and step 5 merged as PR #3.
 
-The stop on the optional feature has also been lifted: all 12 core requirements
-were confirmed working before step 5 began, and step 5 now exists as PR #3. What
-remains is scope discipline rather than a schema stop:
+**The stop on working past step 5 is lifted.** The user has explicitly
+authorised Part 6, so authentication work is in scope and work no longer stops
+after step 5.
 
-- Do **not** add further features beyond step 5. The sequence is complete once
-  PR #3 merges, and anything past it is new scope the user has to ask for.
+What remains is scope discipline for Part 6:
 
-That stop is lifted only when the user explicitly asks for work beyond step 5.
+- Do **not** add features beyond Part 6 authentication. Anything outside that
+  scope is new scope the user has to ask for.
+- Part 6 proceeds one lab step at a time, in the order the user gives. Do not
+  run ahead of the step being asked for — in particular, do not create a branch,
+  write auth code, change the database, install packages, or change Supabase
+  dashboard or Google provider settings until the step that calls for it.
 
 ## Data model
 
@@ -114,6 +144,17 @@ in `docs/supabase-schema.md`.
   query, filter, join or auth call, check the official Supabase docs rather than
   guessing at the API surface.
 
+### Authentication rules
+
+- **Use Supabase Auth for all sign-in and session handling** — never build custom
+  auth or store passwords yourself.
+- **Every page under `/workspace` requires a signed-in user.** Verify this on the
+  server and redirect to `/login` if they are not signed in.
+- **After a successful sign-in, redirect to `/workspace`.**
+- **After sign-out, redirect to `/login`.**
+- **If Google sign-in is implemented, use Supabase Auth's Google provider.** Do
+  not implement custom OAuth or credential handling.
+
 ## Workflow rules
 
 - **Build one feature at a time.** Finish, verify and merge a feature before
@@ -142,10 +183,20 @@ Work through these in order. Do not start a step before the previous one is merg
    filter notes by tag.
 4. **Search** — search across note titles and bodies.
 5. **Optional feature** — only after everything above works.
+6. **Authentication (Part 6)** — Supabase Auth sign-in and session handling, a
+   `/login` route, and a server-protected `/workspace` area. Governed by
+   "Authentication rules" above.
+
+Steps 1 to 5 are Part 5 and are all merged. Step 6 is Part 6 and is the current
+work, so the sequence does not end at step 5.
 
 ## Scope discipline
 
 **Do not build optional features until all 12 core requirements are working.**
+That condition was satisfied during Part 5. The 12 requirements below are Part
+5's list; they are recorded as history and all of them are implemented. Part 6
+authentication is additional scope on top of them — it does not reopen, replace
+or wait on them.
 
 ### Core requirements
 
@@ -177,3 +228,5 @@ quoted verbatim:
 12. Readable empty states throughout: no blank screens when a collection is empty, no search results are found, or no tags match.
 
 Anything beyond this list is the "optional feature" in step 5 of the sequence.
+Part 6 authentication sits outside that list and is separately authorised; see
+"Authentication rules" and step 6 of the implementation sequence.

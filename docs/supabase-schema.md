@@ -82,44 +82,62 @@ it carried nothing worth preserving.
 
 ## Row Level Security
 
-RLS is **enabled** on `public.notes`. Supabase turns it on for tables created
-through the dashboard, and it has deliberately been left on.
+RLS is **enabled** on all four tables — `public.collections`, `public.notes`,
+`public.tags` and `public.note_tags` — and has deliberately been left on.
 
 ### Policies in place
 
-Exactly one policy exists on `public.notes`. There are no other policies on the
-table — no additional permissive policies, and no restrictive ones:
+Exactly one policy exists per table. There are no other policies — no additional
+permissive policies, and no restrictive ones. Since Part 6 added authentication,
+each policy applies to the **`authenticated`** role rather than `anon`:
 
-| Policy | Command | Role | `USING` | `WITH CHECK` |
-|---|---|---|---|---|
-| `anon full access to notes` | `FOR ALL` | `anon` | `true` | `true` |
+| Policy | Table | Command | Role | `USING` | `WITH CHECK` |
+|---|---|---|---|---|---|
+| `anon full access to collections` | `collections` | `FOR ALL` | `authenticated` | `true` | `true` |
+| `anon full access to notes` | `notes` | `FOR ALL` | `authenticated` | `true` | `true` |
+| `anon full access to tags` | `tags` | `FOR ALL` | `authenticated` | `true` | `true` |
+| `anon full access to note_tags` | `note_tags` | `FOR ALL` | `authenticated` | `true` | `true` |
+
+The policy **names** still say `anon`: they were created in Part 5 and only
+their role was changed in Part 6, so the name is now historical and does not
+describe what the policy does. The role column above is what applies.
 
 ```sql
 create policy "anon full access to notes"
   on public.notes
   for all
-  to anon
+  to authenticated
   using (true)
   with check (true);
 ```
 
-### Why this policy exists
+### Why these policies exist
 
-The app reaches Supabase with the publishable (anon) key and has no sign-in
-flow, so every request arrives as the unauthenticated `anon` role. Part 5 does
-not require authentication — none of the 12 core requirements in CLAUDE.md
-mentions users, accounts or per-user data — so this single permissive policy is
-what allows create, read, update and delete to work at all.
+Part 6 added Supabase Auth, so a signed-in request now reaches PostgREST as the
+`authenticated` role. `anon` and `authenticated` are distinct Postgres roles and
+`authenticated` does not inherit `anon`'s policies, so scoping each policy to
+`authenticated` is what allows create, read, update and delete to work at all
+once a user signs in. Scoping them to `anon` alone would leave a signed-in user
+with an empty workspace and failing writes.
 
-Without it, `INSERT` fails with `new row violates row-level security policy for
-table "notes"`, and `SELECT` returns an empty result rather than an error, which
-makes a blocked read look indistinguishable from an empty table.
+Without a matching policy, `INSERT` fails with `new row violates row-level
+security policy for table "notes"`, and `SELECT` returns an empty result rather
+than an error, which makes a blocked read look indistinguishable from an empty
+table.
+
+Dropping `anon` from these policies also means the data is no longer reachable
+without a session: the publishable key on its own no longer grants access.
 
 ### Why this is limited to this learning project
 
-Combined with `USING (true)` and `WITH CHECK (true)`, this policy means that
-anyone holding the project URL and the publishable key can read and write every
-row in `notes`, straight against the REST API and bypassing the app entirely.
+The policies are still permissive. `USING (true)` and `WITH CHECK (true)` place
+no condition on *which* rows a signed-in user may touch, so **every
+authenticated user can read and write every row** in all four tables. Access is
+gated by being signed in, not by who you are.
+
+There is no per-user ownership. The tables carry no `user_id` column and no
+policy references `auth.uid()`, so notes, collections and tags are shared across
+all accounts rather than isolated per user.
 
 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` carries the `NEXT_PUBLIC_` prefix, which
 marks a variable as client-exposed: Next.js inlines such a variable into the
@@ -132,19 +150,16 @@ the browser, with no build warning.
 
 The rule that follows is about which keys may carry the prefix at all. A
 publishable (anon) key is designed to be public and is safe to expose, provided
-RLS policies actually constrain what it can do — which is exactly what the
-blanket policy above does not do. A secret or `service_role` key bypasses RLS
-completely and must **never** be placed in a `NEXT_PUBLIC_` variable, or in any
-value reachable from client code.
+RLS policies actually constrain what it can do. Since Part 6 the policies do
+constrain it: with `anon` dropped, the key alone reaches no rows. A secret or
+`service_role` key bypasses RLS completely and must **never** be placed in a
+`NEXT_PUBLIC_` variable, or in any value reachable from client code.
 
-That is an accepted, deliberate trade-off for a local, single-developer learning
-project holding no real user data. It is **not** a pattern to carry into
-anything shared or deployed for real use: a production version would
-authenticate users and scope policies to `auth.uid()` rather than granting
-blanket access to `anon`.
-
-The same decision has to be made again for `collections`, `tags` and `note_tags`
-when those tables are created in steps 2 and 3.
+Sharing every row between all authenticated users is an accepted, deliberate
+trade-off for a local, single-developer learning project holding no real user
+data. It is **not** a pattern to carry into anything shared or deployed for real
+use: a production version would add a `user_id` column and scope policies to
+`auth.uid()` rather than granting blanket access to every signed-in account.
 
 ## Scope of this document
 
@@ -170,7 +185,9 @@ This document is updated as each of those steps lands.
 
 **Status: created and verified in Supabase.** The statements below were run by
 hand in the Supabase SQL Editor (no MCP server is configured) and the result was
-verified against the live database: both tables are reachable by `anon`, `id`
+verified against the live database: both tables were reachable by `anon` at the
+time (they are reachable by `authenticated` since Part 6 — see "Row Level
+Security"), `id`
 and `created_at` take their defaults, `tags.name` rejects null (`23502`), the
 composite primary key rejects a duplicate pairing (`23505`), an unknown
 `tag_id` is rejected (`23503`), and both `on delete cascade` rules were
@@ -227,6 +244,11 @@ create policy "anon full access to note_tags"
   with check (true);
 ```
 
+The two `create policy` statements above are the Part 5 originals, kept as the
+record of what was executed at the time. **Their role has since changed.** Part 6
+moved every policy from `anon` to `authenticated`; see "Row Level Security"
+above for the current state, which is what the live database now has.
+
 ### Verification queries
 
 ```sql
@@ -245,8 +267,9 @@ where conrelid = 'public.note_tags'::regclass;
 ```
 
 Expect: three columns on `tags` and two on `note_tags`, all `not null`; exactly
-one `ALL`/`{anon}` policy per table; and on `note_tags` a primary key plus two
-foreign keys with `confdeltype = 'c'` (cascade).
+one `ALL`/`{authenticated}` policy per table (this read `{anon}` when the tables
+were created, and became `{authenticated}` in Part 6); and on `note_tags` a
+primary key plus two foreign keys with `confdeltype = 'c'` (cascade).
 
 ### Notes on this design
 
@@ -257,8 +280,10 @@ foreign keys with `confdeltype = 'c'` (cascade).
   indexes `(note_id, tag_id)`, which covers looking a note's tags up; the
   reverse direction (tag to notes) is unindexed and would matter only for the
   tag filtering in requirement 10.
-- The permissive `anon` policy carries the same trade-off documented for `notes`
-  above: acceptable for this local learning project, not for anything deployed.
+- The permissive policy carries the same trade-off documented for `notes` above:
+  now scoped to `authenticated`, but still `USING (true)`, so every signed-in
+  user reaches every row. Acceptable for this local learning project, not for
+  anything deployed.
 
 ## Tag filtering and search add no schema
 

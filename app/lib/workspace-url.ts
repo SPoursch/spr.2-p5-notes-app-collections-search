@@ -14,6 +14,13 @@
  */
 export const UNCOLLECTED = 'uncollected'
 
+/**
+ * The route every workspace link is rooted at. The workspace moved from "/" to
+ * "/workspace" in Part 6 so that one protected subtree could be guarded in one
+ * place; defining the base here keeps that move to a single line.
+ */
+export const WORKSPACE_PATH = '/workspace'
+
 /** Everything the three panes need to reproduce the current view. */
 export type WorkspaceState = {
   collection: string | null
@@ -46,7 +53,7 @@ function build(state: WorkspaceState): string {
 
   const query = search.toString()
 
-  return query.length > 0 ? `/?${query}` : '/'
+  return query.length > 0 ? `${WORKSPACE_PATH}?${query}` : WORKSPACE_PATH
 }
 
 /**
