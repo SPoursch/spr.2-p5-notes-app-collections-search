@@ -474,3 +474,163 @@ export async function removeTagFromNote(
 
   return (data ?? []).length > 0
 }
+
+/* ------------------------------------------------------------------------- *
+ * Authentication (Part 6)
+ *
+ * Supabase Auth is reached through this module for the same reason every
+ * table is: CLAUDE.md allows exactly one module to touch supabase-js, so no
+ * component, route handler or Server Action calls `auth` directly either.
+ *
+ * Nothing here stores or compares a password. Credentials are forwarded to
+ * Supabase Auth, which owns hashing, sessions and tokens. There is no
+ * passwords table and no custom session handling.
+ *
+ * Auth failures are returned rather than thrown. A wrong password is an
+ * ordinary outcome that the sign-in form has to render, not an exceptional
+ * one, which is the opposite of how the table helpers above treat a failed
+ * query.
+ * ------------------------------------------------------------------------- */
+
+/** The signed-in user, reduced to what the interface actually displays. */
+export type AuthUser = {
+  id: string
+  email: string | null
+}
+
+/** Outcome of a sign-in, sign-up or sign-out attempt. */
+export type AuthResult = {
+  ok: boolean
+  /** A message safe to show the user; null when `ok` is true. */
+  message: string | null
+}
+
+/**
+ * Returns the signed-in user, or null when nobody is signed in.
+ *
+ * Uses `getClaims()`, which verifies the token's signature, rather than
+ * `getSession()`, which only decodes whatever cookie the browser sent. Session
+ * cookies are attacker-supplied input, so a page must not trust one without
+ * verification. This is the check that protects /workspace.
+ */
+export async function getAuthenticatedUser(): Promise<AuthUser | null> {
+  const { data, error } = await getSupabaseClient().auth.getClaims()
+
+  if (error || !data?.claims) {
+    return null
+  }
+
+  const claims = data.claims
+
+  return {
+    id: claims.sub,
+    email: typeof claims.email === 'string' ? claims.email : null,
+  }
+}
+
+/** Registers a new user with an email address and password. */
+export async function signUpWithPassword(
+  email: string,
+  password: string,
+): Promise<AuthResult> {
+  const { data, error } = await getSupabaseClient().auth.signUp({
+    email,
+    password,
+  })
+
+  if (error) {
+    console.error('[auth] sign-up failed:', error)
+
+    return { ok: false, message: error.message }
+  }
+
+  // With "Confirm email" enabled a user row comes back with no session: the
+  // account exists but cannot sign in until the emailed link is followed.
+  // Reporting that is the difference between a working form and one that
+  // silently appears to do nothing.
+  if (!data.session) {
+    return {
+      ok: false,
+      message:
+        'Account created. Check your email for a confirmation link, then sign in.',
+    }
+  }
+
+  return { ok: true, message: null }
+}
+
+/** Signs an existing user in with an email address and password. */
+export async function signInWithPassword(
+  email: string,
+  password: string,
+): Promise<AuthResult> {
+  const { error } = await getSupabaseClient().auth.signInWithPassword({
+    email,
+    password,
+  })
+
+  if (error) {
+    console.error('[auth] sign-in failed:', error)
+
+    return { ok: false, message: error.message }
+  }
+
+  return { ok: true, message: null }
+}
+
+/** Ends the current session and clears its cookies. */
+export async function signOut(): Promise<AuthResult> {
+  const { error } = await getSupabaseClient().auth.signOut()
+
+  if (error) {
+    console.error('[auth] sign-out failed:', error)
+
+    return { ok: false, message: error.message }
+  }
+
+  return { ok: true, message: null }
+}
+
+/**
+ * Starts the Google sign-in flow and returns the URL to send the browser to.
+ *
+ * Called on the server, `signInWithOAuth` performs no redirect of its own: it
+ * builds the provider URL, stores the PKCE verifier in a cookie and hands the
+ * URL back. The caller is what redirects. No OAuth request is constructed by
+ * hand and no Google credential is ever handled here.
+ */
+export async function startGoogleSignIn(
+  redirectTo: string,
+): Promise<{ url: string | null; message: string | null }> {
+  const { data, error } = await getSupabaseClient().auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo },
+  })
+
+  if (error || !data.url) {
+    console.error('[auth] Google sign-in could not be started:', error)
+
+    return {
+      url: null,
+      message: 'Google sign-in is unavailable right now. Please try again.',
+    }
+  }
+
+  return { url: data.url, message: null }
+}
+
+/**
+ * Completes an OAuth sign-in by exchanging the authorization code for a
+ * session, which `@supabase/ssr` then writes to cookies.
+ */
+export async function completeOAuthSignIn(code: string): Promise<AuthResult> {
+  const { error } = await getSupabaseClient().auth.exchangeCodeForSession(code)
+
+  if (error) {
+    console.error('[auth] code exchange failed:', error)
+
+    return { ok: false, message: error.message }
+  }
+
+  return { ok: true, message: null }
+}

@@ -4,6 +4,7 @@ import { revalidatePath } from 'next/cache'
 
 import { createCollection, setNoteCollection, NotesDatabaseError } from '../db'
 import { failure, success, type NoteActionState } from './note-action-state'
+import { requireUser } from './require-auth'
 
 /**
  * Server Actions for collections.
@@ -26,7 +27,7 @@ import { failure, success, type NoteActionState } from './note-action-state'
  * Collections and notes render on the same route, so one revalidation covers
  * both the sidebar and the workspace.
  */
-const COLLECTIONS_PATH = '/'
+const COLLECTIONS_PATH = '/workspace'
 
 const MAX_NAME_LENGTH = 100
 
@@ -76,6 +77,14 @@ export async function createCollectionAction(
   _prevState: NoteActionState,
   formData: FormData,
 ): Promise<NoteActionState> {
+  // Authorise before anything else: an unauthenticated caller must not
+  // reach validation, the database, or any message that reveals either.
+  const denied = await requireUser()
+
+  if (denied) {
+    return denied
+  }
+
   const raw = formData.get('name')
   const name = typeof raw === 'string' ? raw.trim() : ''
 
@@ -112,6 +121,14 @@ export async function setNoteCollectionAction(
   _prevState: NoteActionState,
   formData: FormData,
 ): Promise<NoteActionState> {
+  // Authorise before anything else: an unauthenticated caller must not
+  // reach validation, the database, or any message that reveals either.
+  const denied = await requireUser()
+
+  if (denied) {
+    return denied
+  }
+
   const noteId = readUuid(formData, 'noteId')
 
   if (noteId === null) {

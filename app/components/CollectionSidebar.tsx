@@ -11,6 +11,7 @@ import {
 import { BrandHeader } from './BrandHeader'
 import { displayTitle } from './NoteCard'
 import { NewCollectionForm } from './NewCollectionForm'
+import { SignOutButton } from './SignOutButton'
 
 /**
  * Collections navigation tree (requirement 6).
@@ -179,6 +180,7 @@ export function CollectionSidebar({
   activeCollection,
   state,
   tagFilter,
+  userEmail,
 }: {
   collections: Collection[]
   notes: Note[]
@@ -187,6 +189,8 @@ export function CollectionSidebar({
   activeCollection: string | null
   state: WorkspaceState
   tagFilter: React.ReactNode
+  /** The signed-in user, shown above the sign-out control. */
+  userEmail: string | null
 }) {
   // Each note appears exactly once: under its collection, or under
   // "Uncollected" when collection_id is null.
@@ -285,6 +289,20 @@ export function CollectionSidebar({
 
         <div className="border-t border-sidebar-border px-4 py-4">
           <NewCollectionForm />
+        </div>
+
+        {/* Account block: who is signed in, and the way out (requirement 6). */}
+        <div className="flex flex-col gap-2 border-t border-sidebar-border px-4 py-4">
+          {userEmail ? (
+            <p
+              className="truncate text-[13px] text-sidebar-muted"
+              title={userEmail}
+            >
+              Signed in as {userEmail}
+            </p>
+          ) : null}
+
+          <SignOutButton />
         </div>
       </div>
     </aside>

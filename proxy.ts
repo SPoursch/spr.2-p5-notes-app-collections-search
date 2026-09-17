@@ -1,0 +1,57 @@
+import { NextResponse, type NextRequest } from 'next/server'
+
+import { getProxySupabaseClient } from '@/app/lib/supabase'
+
+/**
+ * Session refresh (Part 6).
+ *
+ * `proxy.ts` is the Next.js 16 name for what earlier versions called
+ * `middleware.ts`; it runs before a route is rendered.
+ *
+ * Its single job here is to keep the auth session alive. Access tokens expire
+ * after about an hour, and a Server Component cannot write cookies, so without
+ * this the refreshed token would have nowhere to go and the user would be
+ * signed out mid-session. Calling `getClaims()` performs the refresh when one
+ * is due, and `setAll` writes the new cookies onto the outgoing response.
+ *
+ * This is deliberately *not* where /workspace is protected. A proxy matcher is
+ * a routing rule, and Next.js's own guidance is to verify authentication in
+ * the page or layout that renders protected data rather than relying on a
+ * matcher that a later refactor could quietly stop covering. That check lives
+ * in app/workspace/layout.tsx.
+ */
+export async function proxy(request: NextRequest) {
+  let response = NextResponse.next({ request })
+
+  const supabase = getProxySupabaseClient({
+    getAll() {
+      return request.cookies.getAll()
+    },
+    setAll(cookiesToSet) {
+      // Rebuild the response so the refreshed cookies are attached to both the
+      // request passed onward and the response sent back to the browser.
+      response = NextResponse.next({ request })
+
+      for (const { name, value, options } of cookiesToSet) {
+        response.cookies.set(name, value, options)
+      }
+    },
+  })
+
+  // Verifies the token signature and refreshes it when it has expired. The
+  // result is intentionally unused: this call exists for its cookie writes.
+  await supabase.auth.getClaims()
+
+  return response
+}
+
+export const config = {
+  /*
+    Everything except static assets and image files. Those never carry a
+    session worth refreshing, and running on them would add a Supabase call to
+    each one.
+  */
+  matcher: [
+    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico)$).*)',
+  ],
+}
