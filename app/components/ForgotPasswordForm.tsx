@@ -27,10 +27,10 @@ import {
  * are registered.
  */
 export function ForgotPasswordForm({
-  linkExpired,
+  recoveryFailed,
 }: {
-  /** Set when /auth/confirm rejected an expired or already-used link. */
-  linkExpired: boolean
+  /** Set when /auth/confirm could not turn a recovery link into a session. */
+  recoveryFailed: boolean
 }) {
   const [state, formAction, pending] = useActionState(
     requestPasswordResetAction,
@@ -70,10 +70,19 @@ export function ForgotPasswordForm({
             />
           </div>
 
-          {linkExpired ? (
+          {/*
+            Deliberately not phrased as "expired". A recovery link also fails
+            when it is opened somewhere other than the browser that asked for
+            it, because the PKCE verifier is a cookie in that browser — see
+            app/auth/confirm/route.ts. The server cannot tell the causes apart,
+            so the message names all three rather than asserting the wrong one.
+          */}
+          {recoveryFailed ? (
             <p role="alert" className={ERROR_CLASS}>
-              That reset link has expired or has already been used. Request a
-              new one below.
+              That reset link did not work. It may have expired, already been
+              used, or been opened in a different browser or device from the one
+              that requested it. Request a new link below, then open it in this
+              browser.
             </p>
           ) : null}
 

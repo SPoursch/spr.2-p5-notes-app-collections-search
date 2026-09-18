@@ -84,12 +84,39 @@ Google sign-in needs the Google provider configured in the Supabase dashboard
 This project's local configuration uses:
 
 - Site URL `http://localhost:3000`
-- `http://localhost:3000/auth/callback` in the redirect allow-list
+- `http://localhost:3000/auth/callback` in the redirect allow-list — where
+  Google sign-in returns to
+- `http://localhost:3000/auth/confirm` in the redirect allow-list — where a
+  password-reset link returns to (see below)
 
 The application builds its callback URL from the request's own origin, so no
 extra environment variable is needed. The provider redirects back to
 `/auth/callback`, which exchanges the authorization code for a session
 server-side and then sends the user to `/workspace`.
+
+### Password reset
+
+"Forgot your password?" on the login form leads to `/forgot-password`, which
+asks Supabase Auth to send a recovery email. No custom SMTP is configured, so
+the project uses Supabase's built-in email service and its stock "Reset
+Password" template — which means the emailed link goes to Supabase's own verify
+endpoint, and Supabase redirects the browser to `/auth/confirm` afterwards.
+That URL must therefore be in the redirect allow-list, or the link will land on
+the Site URL instead and the flow will silently fail.
+
+`/auth/confirm` is a route handler: it turns what Supabase appends onto the URL
+into a session, writes that session to cookies, and forwards to
+`/reset-password`, which collects the new password. No token is ever exposed to
+browser JavaScript.
+
+Two consequences worth knowing before testing:
+
+- `@supabase/ssr` uses the PKCE flow, and the code verifier is a cookie in the
+  browser that requested the reset. **The link has to be opened in that same
+  browser**; opening it on another device fails and returns to
+  `/forgot-password` with a message saying so.
+- Supabase's built-in email service is rate-limited (a small number of messages
+  per hour), so repeated test requests will start failing to send.
 
 ## Data ownership and security
 
@@ -117,11 +144,16 @@ and [`supabase/migrations/`](supabase/migrations/).
 
 - **Self-service signup** — an account can be created from the login form
   without an invitation or an administrator.
+- **Password reset** — a signed-out user can request a recovery email from the
+  login form and set a new password without an administrator. See
+  "Password reset" under "Authentication setup" for the flow, and
+  [`docs/part8-password-reset-validation.md`](docs/part8-password-reset-validation.md)
+  for what was manually verified.
 
-Not implemented: GitHub sign-in, password reset, and image uploads. Loading
-states are only partially done — every form that writes shows a pending state
-while it submits, but there is no route-level loading UI and no feedback during
-search or navigation, so it is not claimed here.
+Not implemented: GitHub sign-in and image uploads. Loading states are only
+partially done — every form that writes shows a pending state while it submits,
+but there is no route-level loading UI and no feedback during search or
+navigation, so it is not claimed here.
 
 ## Project notes
 
