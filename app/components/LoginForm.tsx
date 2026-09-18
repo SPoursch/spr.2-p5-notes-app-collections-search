@@ -1,5 +1,6 @@
 'use client'
 
+import Link from 'next/link'
 import { useActionState } from 'react'
 
 import {
@@ -46,11 +47,23 @@ function GoogleIcon() {
   )
 }
 
-const FIELD_CLASS =
+/** Shared by every signed-out form, so the fields match across screens. */
+export const FIELD_CLASS =
   'w-full rounded-[var(--radius-control)] border border-border-strong bg-pane px-3.5 py-2.5 text-[15px] text-foreground outline-none transition-colors placeholder:text-muted focus:border-ring'
 
-const LABEL_CLASS =
+export const LABEL_CLASS =
   'text-[13px] font-semibold uppercase tracking-[0.08em] text-muted'
+
+/** The message block used by each of those forms. */
+export const NOTICE_CLASS =
+  'rounded-[var(--radius-control)] border border-selected-border bg-selected px-3.5 py-2.5 text-[14px] text-foreground'
+
+export const ERROR_CLASS =
+  'rounded-[var(--radius-control)] border border-red-200 bg-red-50 px-3.5 py-2.5 text-[14px] text-danger'
+
+/** The primary submit button. */
+export const SUBMIT_CLASS =
+  'rounded-[var(--radius-control)] bg-primary px-4 py-2.5 text-[15px] font-semibold text-primary-foreground transition-colors hover:bg-primary-hover disabled:cursor-not-allowed disabled:opacity-50'
 
 export function LoginForm({ providerFailed }: { providerFailed: boolean }) {
   const [state, formAction, pending] = useActionState(
@@ -159,6 +172,19 @@ export function LoginForm({ providerFailed }: { providerFailed: boolean }) {
           >
             {signUpPending ? 'Creating account…' : 'Create an account'}
           </button>
+        </p>
+
+        {/*
+          A plain link, not a submit button: it leaves the form rather than
+          posting it, so the password field is never sent anywhere.
+        */}
+        <p className="text-center text-[14px]">
+          <Link
+            href="/forgot-password"
+            className="font-medium text-muted underline underline-offset-2 transition-colors hover:text-foreground"
+          >
+            Forgot your password?
+          </Link>
         </p>
       </form>
 

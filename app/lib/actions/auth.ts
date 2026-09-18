@@ -4,12 +4,15 @@ import { headers } from 'next/headers'
 import { redirect } from 'next/navigation'
 
 import {
+  sendPasswordResetEmail,
   signInWithPassword,
   signOut,
   signUpWithPassword,
   startGoogleSignIn,
+  updatePassword,
 } from '../db'
-import { failure, type NoteActionState } from './note-action-state'
+import { failure, success, type NoteActionState } from './note-action-state'
+import { requireUser } from './require-auth'
 
 /**
  * Server Actions for authentication (Part 6).
@@ -26,6 +29,17 @@ import { failure, type NoteActionState } from './note-action-state'
 /** Where a signed-in user lands, and where a signed-out one is sent. */
 const WORKSPACE_PATH = '/workspace'
 const LOGIN_PATH = '/login'
+
+/**
+ * Where Supabase sends the browser after verifying a reset link.
+ *
+ * Deliberately bare, with no query string of its own: Supabase appends the
+ * result of the verification to this URL, and a URL that already carries
+ * parameters is one more thing that has to merge correctly. The confirm route
+ * knows its own default destination, so nothing needs passing here. It also
+ * means the value matches the Supabase redirect allow-list entry exactly.
+ */
+const CONFIRM_PATH = '/auth/confirm'
 
 /** Supabase Auth's own minimum. Rejecting shorter input here saves a round trip. */
 const MIN_PASSWORD_LENGTH = 6
@@ -65,6 +79,38 @@ function readCredentials(
   }
 
   return { ok: true, value: { email, password: rawPassword } }
+}
+
+/**
+ * The origin this request arrived on, or null when it cannot be determined.
+ *
+ * Used to build the URLs Supabase redirects back to, so no host is hardcoded
+ * and the flows work unchanged on localhost. A Server Action is a POST, so the
+ * browser sends `Origin` and it already carries the scheme. `Host` is the
+ * fallback and needs a scheme added: `x-forwarded-proto` behind a proxy,
+ * otherwise http, which is what a localhost dev server actually serves.
+ *
+ * Whatever this returns must still appear in the Supabase redirect allow-list;
+ * that is a dashboard setting and is what stops an arbitrary origin being used.
+ */
+async function requestOrigin(): Promise<string | null> {
+  const requestHeaders = await headers()
+
+  const origin = requestHeaders.get('origin')
+
+  if (origin) {
+    return origin
+  }
+
+  const host = requestHeaders.get('host')
+
+  if (!host) {
+    return null
+  }
+
+  const proto = requestHeaders.get('x-forwarded-proto') ?? 'http'
+
+  return `${proto}://${host}`
 }
 
 /**
@@ -148,23 +194,9 @@ export async function signOutAction(): Promise<void> {
  * Supabase redirect allow-list, which is a dashboard setting.
  */
 export async function signInWithGoogleAction(): Promise<NoteActionState> {
-  const requestHeaders = await headers()
+  const baseUrl = await requestOrigin()
 
-  // A Server Action is a POST, so the browser sends `Origin` and it already
-  // carries the scheme. `Host` is the fallback, and needs a scheme added:
-  // `x-forwarded-proto` behind a proxy, otherwise http, which is what a
-  // localhost dev server actually serves.
-  const origin = requestHeaders.get('origin')
-  const host = requestHeaders.get('host')
-
-  let baseUrl: string
-
-  if (origin) {
-    baseUrl = origin
-  } else if (host) {
-    const proto = requestHeaders.get('x-forwarded-proto') ?? 'http'
-    baseUrl = `${proto}://${host}`
-  } else {
+  if (!baseUrl) {
     return failure('Google sign-in is unavailable right now.')
   }
 
@@ -175,4 +207,110 @@ export async function signInWithGoogleAction(): Promise<NoteActionState> {
   }
 
   redirect(url)
+}
+
+/**
+ * Sends a password-reset email.
+ *
+ * Reports the same success whether or not the address has an account. Telling
+ * the user "no account with that email" would make this form a way of testing
+ * which addresses are registered, so the outcome is deliberately identical.
+ * A genuine failure to *send* is still reported, since that is about the
+ * service rather than about the address.
+ *
+ * The link Supabase emails points at /auth/confirm, which verifies the token
+ * and forwards to the page that collects the new password.
+ */
+export async function requestPasswordResetAction(
+  _state: NoteActionState,
+  formData: FormData,
+): Promise<NoteActionState> {
+  const raw = formData.get('email')
+
+  if (typeof raw !== 'string') {
+    return failure('Enter your email address.')
+  }
+
+  const email = raw.trim()
+
+  if (email.length === 0) {
+    return failure('Enter your email address.')
+  }
+
+  if (!email.includes('@') || email.length > 320) {
+    return failure('Enter a valid email address.')
+  }
+
+  const baseUrl = await requestOrigin()
+
+  if (!baseUrl) {
+    return failure('Password reset is unavailable right now.')
+  }
+
+  const result = await sendPasswordResetEmail(email, `${baseUrl}${CONFIRM_PATH}`)
+
+  if (!result.ok) {
+    // The underlying message is logged in app/lib/db.ts, not shown: a raw
+    // Supabase error can name rate limits or delivery internals.
+    return failure('Could not send the reset email. Please try again.')
+  }
+
+  return success()
+}
+
+/**
+ * Sets a new password for the user the current session belongs to.
+ *
+ * Authorisation is the session, checked two ways. `requireUser()` verifies the
+ * token's signature before anything else, so an unauthenticated POST to this
+ * action is rejected outright rather than reaching Supabase. Beyond that,
+ * `updateUser` acts only on the session's own user and takes no user id, so
+ * even a valid session cannot change someone else's password.
+ *
+ * Reaching here normally means /auth/confirm has just verified a recovery
+ * token and established the session it carried. A signed-in user changing
+ * their own password uses the same path.
+ */
+export async function updatePasswordAction(
+  _state: NoteActionState,
+  formData: FormData,
+): Promise<NoteActionState> {
+  const denied = await requireUser()
+
+  if (denied) {
+    return failure(
+      'That reset link is no longer valid. Request a new one and try again.',
+    )
+  }
+
+  const raw = formData.get('password')
+
+  if (typeof raw !== 'string' || raw.length === 0) {
+    return failure('Enter a new password.')
+  }
+
+  // Not trimmed: spaces are legitimate password characters, and trimming would
+  // silently change what the user typed.
+  if (raw.length < MIN_PASSWORD_LENGTH) {
+    return failure(
+      `Choose a password of at least ${MIN_PASSWORD_LENGTH} characters.`,
+    )
+  }
+
+  const confirmation = formData.get('confirmPassword')
+
+  if (typeof confirmation === 'string' && confirmation !== raw) {
+    return failure('Those passwords do not match.')
+  }
+
+  const result = await updatePassword(raw)
+
+  if (!result.ok) {
+    // The underlying message is logged server-side in app/lib/db.ts rather
+    // than shown: Supabase's text here can describe rate limits and password
+    // policy internals.
+    return failure('Could not update the password. Please try again.')
+  }
+
+  redirect(WORKSPACE_PATH)
 }
