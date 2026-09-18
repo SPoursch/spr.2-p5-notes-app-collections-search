@@ -1,7 +1,12 @@
 # Supabase Schema
 
-Current state of the database for **Turing College BAI Sprint 2, Part 5 —
-Notes App with Collections and Search**.
+Current state of the database for **Turing College BAI Sprint 2 — Notes App
+with Collections and Search**, through Part 5 (schema), Part 6 (authentication)
+and Part 8 (per-user ownership).
+
+Every statement here has been verified against the live database. The ownership
+columns, policies and indexes come from
+`supabase/migrations/20260918120000_add_per_user_ownership.sql`.
 
 ## References
 
@@ -36,6 +41,8 @@ Stores each note document. Verified against the Supabase dashboard.
 | `body` | `text` | — | yes | Note content |
 | `created_at` | `timestamptz` | `now()` | no | Set by the database on insert |
 | `updated_at` | `timestamptz` | — | yes | Null until the first update; set by the `notes_set_updated_at` trigger |
+| `collection_id` | `uuid` | — | yes | `notes_collection_id_fkey` → `collections(id)` `on delete set null`. Null means the note sits outside every collection |
+| `user_id` | `uuid` | `auth.uid()` | **no** | Owner. `notes_user_id_fkey` → `auth.users(id)` `on delete cascade`. Added in Part 8 |
 
 This satisfies core requirement 2, which asks for a `notes` table storing at
 minimum `id`, `title`, `body`, `created_at` and `updated_at`.
@@ -80,115 +87,206 @@ rows. Those were Part 5 CRUD test notes and are deliberately treated as never
 edited; the old column value did not distinguish edited from unedited rows, so
 it carried nothing worth preserving.
 
+## Ownership
+
+Added in Part 8 by `supabase/migrations/20260918120000_add_per_user_ownership.sql`.
+
+| Table | Ownership column | Foreign key | On delete | Index |
+|---|---|---|---|---|
+| `collections` | `user_id uuid not null default auth.uid()` | `collections_user_id_fkey` → `auth.users(id)` | `cascade` | `collections_user_id_idx` |
+| `notes` | `user_id uuid not null default auth.uid()` | `notes_user_id_fkey` → `auth.users(id)` | `cascade` | `notes_user_id_idx` |
+| `tags` | `user_id uuid not null default auth.uid()` | `tags_user_id_fkey` → `auth.users(id)` | `cascade` | `tags_user_id_idx` |
+| `note_tags` | **none — derived** | — | — | — |
+
+`on delete cascade` means deleting an account removes its data rather than
+leaving rows pointing at a user that no longer exists.
+
+The `default auth.uid()` is a backstop, not the mechanism. The application sends
+`user_id` explicitly — `createNote`, `createCollection` and `createTag` in
+`app/lib/db.ts` read it from the verified session through `requireUserId()`. The
+default only means a write path that forgot would still produce a correctly
+owned row instead of a constraint violation. It cannot be used to forge
+ownership, because the `with check` clauses below reject any row whose `user_id`
+is not the caller.
+
+The indexes exist because every policy filters on `user_id` and Postgres does
+not index a foreign key column automatically; without them each read would be a
+sequential scan with the policy applied per row.
+
+### Why `note_tags` has no `user_id`
+
+A pairing's owner is already a fact about its note and its tag. Storing it a
+third time would be duplicated state that can drift out of agreement with the
+rows it describes — a pairing whose `user_id` disagreed with its note's would be
+both possible and meaningless. The policy derives ownership instead.
+
+### Existing data
+
+The Part 5/6 rows had no owner. Rather than assign them to an arbitrary account,
+they were deleted before ownership was enforced — they were disposable CRUD
+scratch data, and deleting them left no ambiguity about who owns what. The
+migration's guard block raises and rolls the whole migration back if any row
+still lacks an owner when it runs, so a half-applied ownership model cannot be
+left behind. All four tables were empty immediately after the migration.
+
 ## Row Level Security
 
 RLS is **enabled** on all four tables — `public.collections`, `public.notes`,
-`public.tags` and `public.note_tags` — and has deliberately been left on.
+`public.tags` and `public.note_tags`.
 
 ### Policies in place
 
-Exactly one policy exists per table. There are no other policies — no additional
-permissive policies, and no restrictive ones. Since Part 6 added authentication,
-each policy applies to the **`authenticated`** role rather than `anon`:
+Exactly one policy per table. There are no other policies — no additional
+permissive policies, and no restrictive ones. All four are `for all` and apply
+to the **`authenticated`** role.
 
-| Policy | Table | Command | Role | `USING` | `WITH CHECK` |
-|---|---|---|---|---|---|
-| `anon full access to collections` | `collections` | `FOR ALL` | `authenticated` | `true` | `true` |
-| `anon full access to notes` | `notes` | `FOR ALL` | `authenticated` | `true` | `true` |
-| `anon full access to tags` | `tags` | `FOR ALL` | `authenticated` | `true` | `true` |
-| `anon full access to note_tags` | `note_tags` | `FOR ALL` | `authenticated` | `true` | `true` |
+Postgres applies `using` to SELECT, UPDATE and DELETE, and `with check` to
+INSERT and UPDATE, so a single `for all` policy covers all four operations:
 
-The policy **names** still say `anon`: they were created in Part 5 and only
-their role was changed in Part 6, so the name is now historical and does not
-describe what the policy does. The role column above is what applies.
+| Operation | Clause | Effect |
+|---|---|---|
+| SELECT | `using` | only your rows are visible |
+| INSERT | `with check` | the new row must be yours |
+| UPDATE | both | you may only change your rows, and may not reassign one to another account |
+| DELETE | `using` | you may only delete your rows |
+
+| Table | Policy | `USING` | `WITH CHECK` |
+|---|---|---|---|
+| `collections` | `collections are private to their owner` | `(select auth.uid()) = user_id` | same |
+| `notes` | `notes are private to their owner` | `(select auth.uid()) = user_id` | owner **and** the collection is yours |
+| `tags` | `tags are private to their owner` | `(select auth.uid()) = user_id` | same |
+| `note_tags` | `note_tags follow the ownership of their note` | the note is yours | the note **and** the tag are yours |
+
+`(select auth.uid())` rather than a bare `auth.uid()`: the subquery form is
+evaluated once per statement instead of once per row.
 
 ```sql
-create policy "anon full access to notes"
+create policy "collections are private to their owner"
+  on public.collections
+  for all
+  to authenticated
+  using ((select auth.uid()) = user_id)
+  with check ((select auth.uid()) = user_id);
+```
+
+### The `notes.collection_id` ownership constraint
+
+`notes` carries a second condition on `with check`. `collection_id` is a foreign
+key, and **foreign key validation does not consult RLS**, so without this a user
+could file their own note inside another user's collection by supplying that id.
+The `exists` runs under the collections policy above, so it can only ever see
+collections the caller owns.
+
+```sql
+create policy "notes are private to their owner"
   on public.notes
   for all
   to authenticated
-  using (true)
-  with check (true);
+  using ((select auth.uid()) = user_id)
+  with check (
+    (select auth.uid()) = user_id
+    and (
+      collection_id is null
+      or exists (
+        select 1
+        from public.collections c
+        where c.id = notes.collection_id
+          and c.user_id = (select auth.uid())
+      )
+    )
+  );
 ```
 
-### Why these policies exist
+### How `note_tags` ownership is enforced
 
-Part 6 added Supabase Auth, so a signed-in request now reaches PostgREST as the
-`authenticated` role. `anon` and `authenticated` are distinct Postgres roles and
-`authenticated` does not inherit `anon`'s policies, so scoping each policy to
-`authenticated` is what allows create, read, update and delete to work at all
-once a user signs in. Scoping them to `anon` alone would leave a signed-in user
-with an empty workspace and failing writes.
+`using` follows the note: its owner owns the pairing, so reading a note's tags
+and removing one both follow note ownership. `with check` additionally requires
+owning the tag, so a user cannot attach someone else's tag to their own note.
 
-Without a matching policy, `INSERT` fails with `new row violates row-level
-security policy for table "notes"`, and `SELECT` returns an empty result rather
-than an error, which makes a blocked read look indistinguishable from an empty
-table.
+Keeping the tag check out of `using` is deliberate — it means a pairing is
+always removable by the note's owner, rather than leaving a row that no one can
+delete.
 
-Dropping `anon` from these policies also means the data is no longer reachable
-without a session: the publishable key on its own no longer grants access.
+```sql
+create policy "note_tags follow the ownership of their note"
+  on public.note_tags
+  for all
+  to authenticated
+  using (
+    exists (
+      select 1 from public.notes n
+      where n.id = note_tags.note_id and n.user_id = (select auth.uid())
+    )
+  )
+  with check (
+    exists (
+      select 1 from public.notes n
+      where n.id = note_tags.note_id and n.user_id = (select auth.uid())
+    )
+    and exists (
+      select 1 from public.tags t
+      where t.id = note_tags.tag_id and t.user_id = (select auth.uid())
+    )
+  );
+```
 
-### Why this is limited to this learning project
+### Where enforcement lives
 
-The policies are still permissive. `USING (true)` and `WITH CHECK (true)` place
-no condition on *which* rows a signed-in user may touch, so **every
-authenticated user can read and write every row** in all four tables. Access is
-gated by being signed in, not by who you are.
+The database, not the application. `app/lib/db.ts` names the owner on insert but
+does **not** filter reads by user: the policies restrict every statement to the
+caller's rows, so a bare `select` already returns only their data. Repeating the
+filter in application code would duplicate the boundary in a second place where
+the two could disagree.
 
-There is no per-user ownership. The tables carry no `user_id` column and no
-policy references `auth.uid()`, so notes, collections and tags are shared across
-all accounts rather than isolated per user.
+The consequence, stated plainly: if these policies were dropped, the application
+would stop isolating accounts. That is the intended design — one enforcement
+point — not an oversight.
+
+### Keys and secrets
 
 `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` carries the `NEXT_PUBLIC_` prefix, which
-marks a variable as client-exposed: Next.js inlines such a variable into the
-browser bundle wherever client-side code references it. At present nothing does
-— both variables are read only by `app/lib/supabase.ts`, which is reached solely
-from server code, so the key is not currently in the browser bundle. The prefix
-nonetheless makes that exposure one value-import away: a client component
-importing a value (not just a type) from `app/lib/db.ts` would ship the key to
-the browser, with no build warning.
+marks a variable as client-exposed. At present nothing in client code references
+it — both variables are read only by `app/lib/supabase.ts`, which is reached
+solely from server code — so the key is not currently in the browser bundle.
 
-The rule that follows is about which keys may carry the prefix at all. A
-publishable (anon) key is designed to be public and is safe to expose, provided
-RLS policies actually constrain what it can do. Since Part 6 the policies do
-constrain it: with `anon` dropped, the key alone reaches no rows. A secret or
+A publishable (anon) key is designed to be public and is safe to expose,
+provided RLS constrains what it can do. Since the `anon` role has no policy on
+any of these tables, the key on its own now reaches no rows at all. A secret or
 `service_role` key bypasses RLS completely and must **never** be placed in a
 `NEXT_PUBLIC_` variable, or in any value reachable from client code.
 
-Sharing every row between all authenticated users is an accepted, deliberate
-trade-off for a local, single-developer learning project holding no real user
-data. It is **not** a pattern to carry into anything shared or deployed for real
-use: a production version would add a `user_id` column and scope policies to
-`auth.uid()` rather than granting blanket access to every signed-in account.
-
 ## Scope of this document
 
-**This is the current schema only.** `notes` is the only table that exists at this
-point in the project.
+**All four tables exist.** `collections`, `notes`, `tags` and `note_tags` are
+created, carry ownership where it applies, and are covered by RLS.
 
-The following tables are **not yet created** and will be added later, in the order
-given by the Part 5 implementation sequence in CLAUDE.md:
-
-| Table | Added in step | Purpose |
+| Table | Columns | Ownership |
 |---|---|---|
-| `collections` | Step 2 — Collections UI | Named groups of notes (`id`, `name`, `created_at`) |
-| `tags` | Step 3 — Tag system | Tag names |
-| `note_tags` | Step 3 — Tag system | Join table linking one note to one tag per row |
+| `collections` | `id`, `name`, `created_at`, `user_id` | own `user_id` |
+| `notes` | `id`, `title`, `body`, `created_at`, `updated_at`, `collection_id`, `user_id` | own `user_id` |
+| `tags` | `id`, `name`, `created_at`, `user_id` | own `user_id` |
+| `note_tags` | `note_id`, `tag_id` | derived from the note and the tag |
 
-A `collection_id` column on `notes`, pointing at `collections` and accepting empty
-values so a note can sit outside any collection, is also added in step 2 rather
-than now.
+Relationships between them:
 
-This document is updated as each of those steps lands.
+- A collection contains many notes; a note belongs to zero or one collection,
+  through `notes.collection_id` (`on delete set null`, so deleting a collection
+  moves its notes out rather than deleting them).
+- A note has many tags and a tag applies to many notes, through `note_tags`.
+  Its composite primary key `(note_id, tag_id)` makes a duplicate pairing
+  impossible, and both foreign keys cascade, so deleting a note or a tag removes
+  only the pairings.
+- Every collection, note and tag belongs to exactly one `auth.users` row.
+
+This document is updated as each schema change lands.
 
 ## Tags
 
 **Status: created and verified in Supabase.** The statements below were run by
 hand in the Supabase SQL Editor (no MCP server is configured) and the result was
 verified against the live database: both tables were reachable by `anon` at the
-time (they are reachable by `authenticated` since Part 6 — see "Row Level
-Security"), `id`
-and `created_at` take their defaults, `tags.name` rejects null (`23502`), the
+time (access is now restricted to each row's owner — see "Row Level Security"),
+`id` and `created_at` take their defaults, `tags.name` rejects null (`23502`), the
 composite primary key rejects a duplicate pairing (`23505`), an unknown
 `tag_id` is rejected (`23503`), and both `on delete cascade` rules were
 confirmed in each direction — deleting a tag or a note removes only the pairing
@@ -245,9 +343,11 @@ create policy "anon full access to note_tags"
 ```
 
 The two `create policy` statements above are the Part 5 originals, kept as the
-record of what was executed at the time. **Their role has since changed.** Part 6
-moved every policy from `anon` to `authenticated`; see "Row Level Security"
-above for the current state, which is what the live database now has.
+record of what was executed at the time. **They no longer exist.** Part 6 moved
+them from `anon` to `authenticated`, and Part 8 dropped them by name and
+replaced them with the ownership policies. See "Row Level Security" above for
+the current state, which is what the live database now has. The `create table`
+statements are still accurate apart from the `user_id` column added in Part 8.
 
 ### Verification queries
 
@@ -266,9 +366,9 @@ from pg_constraint
 where conrelid = 'public.note_tags'::regclass;
 ```
 
-Expect: three columns on `tags` and two on `note_tags`, all `not null`; exactly
-one `ALL`/`{authenticated}` policy per table (this read `{anon}` when the tables
-were created, and became `{authenticated}` in Part 6); and on `note_tags` a
+Expect: four columns on `tags` (`user_id` was added in Part 8) and two on
+`note_tags`, all `not null`; exactly one `ALL`/`{authenticated}` policy per
+table, now comparing `auth.uid()` rather than `true`; and on `note_tags` a
 primary key plus two foreign keys with `confdeltype = 'c'` (cascade).
 
 ### Notes on this design
@@ -280,17 +380,18 @@ primary key plus two foreign keys with `confdeltype = 'c'` (cascade).
   indexes `(note_id, tag_id)`, which covers looking a note's tags up; the
   reverse direction (tag to notes) is unindexed and would matter only for the
   tag filtering in requirement 10.
-- The permissive policy carries the same trade-off documented for `notes` above:
-  now scoped to `authenticated`, but still `USING (true)`, so every signed-in
-  user reaches every row. Acceptable for this local learning project, not for
-  anything deployed.
+- Tags are per-user, so two accounts may each have a tag of the same name
+  without either seeing the other's. Combined with the missing unique
+  constraint, one account can also hold two tags of the same name.
+- `note_tags` needs no index for ownership: its policy looks rows up by
+  `notes.id` and `tags.id`, both primary keys.
 
 ## Tag filtering and search add no schema
 
 Core requirements 10 (tag filtering) and 11 (search) are implemented without any
 database change — no columns, no indexes, no full-text search configuration.
 
-Both operate in memory in `app/page.tsx` on rows that request has already
+Both operate in memory in `app/workspace/page.tsx` on rows that request has already
 loaded: `listNotes()`, `listCollections()`, `listTags()` and `listTagsByNote()`
 run once per request, and the collection filter, the AND-combined tag filter and
 the search are then applied to those arrays. Selected filters live in the URL

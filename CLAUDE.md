@@ -7,8 +7,10 @@ Project guidance for Claude Code. Read this before doing anything in this reposi
 **Turing College — Build with AI, Sprint 2.**
 
 - **Part 5 — "Notes App with Collections and Search".** Complete and merged.
-- **Part 6 — authentication.** Active. Sign-in, session handling and a protected
-  `/workspace` area are now in scope. See "Authentication rules" under
+- **Part 6 — authentication.** Complete and merged as PR #4.
+- **Part 8 — per-user data ownership.** Active. Every collection, note and tag
+  belongs to exactly one account, and a signed-in user sees only what they
+  created. See "Ownership rules" and "Authentication rules" under
   "Architecture rules".
 
 A brand-new, locally developed notes application. Notes are stored persistently in
@@ -22,9 +24,18 @@ empty directory; see "Current state" for what has been built so far.
 - Next.js (App Router)
 - TypeScript
 - Tailwind CSS
-- Supabase, accessed through `supabase-js`
-- No Supabase MCP server is configured yet. All Supabase work is done manually
-  (SQL in the Supabase dashboard / SQL editor, and `supabase-js` in application code).
+- Supabase — the database, and Supabase Auth for email/password and Google
+  OAuth sign-in
+- `supabase-js` for queries, and `@supabase/ssr` for the cookie-backed server
+  session. Both are reached only through `app/lib/supabase.ts`.
+- **Supabase Agent Skills, installed repository-local under `.agents/skills/`.**
+  They are committed, so they travel with the repository rather than depending
+  on a user-level install. `.claude/skills/` holds machine-local symlinks to
+  them and is git-ignored.
+- No Supabase MCP server is configured. All Supabase work is done manually
+  (SQL in the Supabase dashboard / SQL editor, and `supabase-js` in application
+  code). Migrations are kept as versioned files in `supabase/migrations/` and
+  run by hand.
 
 ## Current state
 
@@ -39,24 +50,38 @@ the workspace search also matching a note's tag names, alongside a final visual
 pass — was built on `feature/tag-search` and merged into `main` as **PR #3**,
 merge commit `e301457`, after its pre-merge diff review.
 
-**Part 5 is therefore complete, and Part 6 — authentication — is implemented on
-`feature/add-auth`,** which is not yet merged. The rules that govern it are
-"Authentication rules" under "Architecture rules", and it is step 6 of the
-implementation sequence.
-
-What Part 6 adds:
+**Part 6 — authentication — is complete and merged** into `main` as **PR #4**,
+merge commit `9ef1af0`. What it added:
 
 - Supabase Auth for email/password sign-up, sign-in and sign-out, and for
   Google sign-in. The Google provider is configured in the Supabase dashboard
   and has been signed in with successfully.
 - `/workspace` is protected on the server: a request with no authenticated user
   is redirected to `/login` before the page renders.
-- Row level security on `collections`, `notes`, `tags` and `note_tags` is now
-  restricted to the `authenticated` role.
-- Manual end-to-end authentication testing has passed.
-- The Supabase Security Advisor reports 0 errors and 6 warnings. Those warnings
-  are known and deliberately deferred; none of them blocks this Part 6
-  checkpoint.
+- Every mutation Server Action authorises the request itself, since an action is
+  a public POST endpoint that the page guard does not cover.
+- Manual end-to-end authentication testing passed.
+
+**Part 8 — per-user data ownership — is in progress on `main`.** What it has
+added so far:
+
+- `user_id` on `collections`, `notes` and `tags`, and row level security
+  policies that compare it against `auth.uid()`. This is the change that makes
+  a user see only their own notes. Applied by
+  `supabase/migrations/20260918120000_add_per_user_ownership.sql` and recorded
+  in `docs/supabase-schema.md`.
+- A profile menu in the top right of the workspace, showing the signed-in
+  user's name, email and avatar from the verified session, with sign-out.
+- Repository-local Supabase Agent Skills under `.agents/skills/`.
+- The two-account isolation test has passed end to end: two accounts each see
+  only their own notes, collections and tags.
+- The Supabase Security Advisor reports 0 errors. The remaining warnings are
+  known and deliberately deferred.
+
+Part 8 commits were made directly on `main` rather than on a feature branch.
+That is a second deliberate, time-constrained departure from "One Git branch per
+feature", recorded here rather than left as silent drift. Future work follows
+the branch workflow in "Workflow rules".
 
 Steps 3 and 4 were developed on the same branch as step 2 rather than one branch
 each, and step 2 was not merged before step 3 began. That is a deliberate,
@@ -77,11 +102,16 @@ What exists:
   being viewed, and an editor pane for the selected note.
 - Notes CRUD, collection create/assign, tag create/add/remove, tag filtering and
   search, driven by Server Actions in `app/lib/actions/` and rendered by
-  `app/page.tsx` and `app/components/`. Reads happen in Server Components; only
-  mutations and the search field are Client Components.
+  `app/workspace/page.tsx` and `app/components/`. Reads happen in Server
+  Components; only mutations, the search field and the profile menu are Client
+  Components.
 - Workspace state lives entirely in the URL (`collection`, `tag`, `q`, `note`),
   so filtering and selection hold no client-side state. Filtering and search run
   in memory over the already-loaded rows, adding no queries.
+- Authentication: `/login`, `/auth/callback` for the OAuth code exchange, a
+  server guard in `app/workspace/layout.tsx`, and `proxy.ts` refreshing the
+  session cookie. Auth calls live in `app/lib/db.ts` alongside every other
+  Supabase call.
 
 All 12 core requirements have an implementation. Requirements 10 and 11 add no
 schema: tag filtering and search operate on rows already loaded per request.
@@ -94,18 +124,21 @@ schema stops are gone: `collections`, `notes.collection_id`, `tags` and
 on the optional feature is gone as well: all 12 core requirements were confirmed
 working before step 5 began, and step 5 merged as PR #3.
 
-**The stop on working past step 5 is lifted.** The user has explicitly
-authorised Part 6, so authentication work is in scope and work no longer stops
-after step 5.
+**The stops on Part 6 and Part 8 are lifted too.** Authentication is merged, and
+per-user ownership is applied to the live database.
 
-What remains is scope discipline for Part 6:
+What remains is scope discipline for Part 8:
 
-- Do **not** add features beyond Part 6 authentication. Anything outside that
+- Do **not** add features beyond what Part 8 asks for. Anything outside that
   scope is new scope the user has to ask for.
-- Part 6 proceeds one lab step at a time, in the order the user gives. Do not
-  run ahead of the step being asked for — in particular, do not create a branch,
-  write auth code, change the database, install packages, or change Supabase
-  dashboard or Google provider settings until the step that calls for it.
+- Part 8 proceeds one lab step at a time, in the order the user gives. Do not
+  run ahead of the step being asked for — in particular, do not change the
+  database, install packages, or change Supabase dashboard or Google provider
+  settings until the step that calls for it.
+- **Database changes are applied by the user, not by this repository.** There is
+  no CLI project and no MCP server, so a schema change means writing a migration
+  file under `supabase/migrations/` and handing the user the SQL to run. Never
+  report a migration as applied without verification output from the database.
 
 ## Data model
 
@@ -116,18 +149,23 @@ What remains is scope discipline for Part 6:
 - A note can have many tags.
 - A tag can apply to many notes.
 - `note_tags` is the join table connecting notes and tags.
+- **Every collection, note and tag belongs to exactly one account**, through a
+  `user_id` referencing `auth.users`.
 
 ### Tables
 
-1. **collections** — named containers for notes.
+1. **collections** — named containers for notes. Has `user_id`.
 2. **notes** — the note itself (title, body, optional collection reference).
-3. **tags** — named labels.
-4. **note_tags** — many-to-many join between `notes` and `tags`.
+   Has `user_id`.
+3. **tags** — named labels. Has `user_id`.
+4. **note_tags** — many-to-many join between `notes` and `tags`. Has **no**
+   `user_id`: a pairing's owner is already a fact about its note and its tag, so
+   storing it a third time would be duplicated state that can drift. Its policy
+   derives ownership from those two relationships instead.
 
-Exact columns, constraints, indexes and RLS policies are decided when the schema
-step is actually reached — not before.
-The `notes` table has reached that step; its columns and RLS policy are recorded
-in `docs/supabase-schema.md`.
+Exact columns, constraints, indexes and RLS policies are recorded in
+`docs/supabase-schema.md`, which is kept in step with
+`supabase/migrations/`.
 
 ## Architecture rules
 
@@ -143,6 +181,15 @@ in `docs/supabase-schema.md`.
 - **Supabase queries follow the official Supabase documentation.** When writing a
   query, filter, join or auth call, check the official Supabase docs rather than
   guessing at the API surface.
+- **Use the repository's Supabase Agent Skills.** Any Supabase or Postgres work —
+  schema changes, migrations, RLS policies, client or SSR integration, auth,
+  debugging a database error — loads the skills in `.agents/skills/` first, and
+  the Postgres one specifically before writing or changing anything that lives
+  in the database.
+- **Nothing is persisted in the browser.** No `localStorage`, no
+  `sessionStorage`, for the session or for application data. Notes live in
+  Supabase; workspace state lives in the URL; the auth session lives in cookies
+  managed by `@supabase/ssr`.
 
 ### Authentication rules
 
@@ -154,6 +201,40 @@ in `docs/supabase-schema.md`.
 - **After sign-out, redirect to `/login`.**
 - **If Google sign-in is implemented, use Supabase Auth's Google provider.** Do
   not implement custom OAuth or credential handling.
+- **Verify the session; never trust the cookie as sent.** Identity comes from
+  `getClaims()`, which verifies the token's signature, not from `getSession()`,
+  which only decodes whatever the browser sent. A session cookie is
+  attacker-supplied input. `getAuthenticatedUser()` in `app/lib/db.ts` is the
+  single place this check lives.
+- **A Server Action authorises itself.** An action is a public POST endpoint,
+  not a page, so a page or layout guard does nothing to stop it being invoked
+  directly. Every mutating action calls the guard in
+  `app/lib/actions/require-auth.ts` before validating input or touching the
+  database.
+- **Provider metadata is for display only.** A display name or avatar comes from
+  `user_metadata`, which the user can edit, so it may be shown and must never be
+  used for an access decision. Authorisation uses the verified `sub` claim.
+
+### Ownership rules
+
+- **Every collection, note and tag belongs to exactly one account; `note_tags`
+  ownership is derived through its note and tag relationships.** `collections`,
+  `notes` and `tags` each carry a `user_id` referencing `auth.users(id)`,
+  `not null`, with `on delete cascade`.
+- **RLS is the enforcement layer, not the application.** The policies restrict
+  every statement to the caller's own rows, so isolation cannot be lost by
+  forgetting a filter in one query. Application filtering is defence in depth;
+  the database is the authority.
+- **New rows derive `user_id` from the authenticated server session.** The
+  create functions in `app/lib/db.ts` read the id through `requireUserId()` and
+  send it explicitly.
+- **Never accept a user id from client input.** No function in `app/lib/db.ts`
+  takes a user id as an argument, and no Server Action reads one from a form
+  field. A client-supplied owner would be worthless, since the client is what is
+  being checked.
+- **`note_tags` ownership is derived, not stored.** Its policy requires the
+  caller to own the note, and additionally to own the tag when creating a
+  pairing.
 
 ## Workflow rules
 
@@ -169,6 +250,33 @@ in `docs/supabase-schema.md`.
 - **Keep the implementation aligned with this file.** If a decision contradicts
   CLAUDE.md, either change the approach or update CLAUDE.md deliberately — do not
   silently drift.
+
+### Validation workflow
+
+Run all four before every commit, and fix what they report rather than working
+around it:
+
+```bash
+git diff --check     # whitespace errors and conflict markers
+npx tsc --noEmit     # types
+npm run lint         # ESLint
+npm run build        # production build
+```
+
+Vendored third-party files under `.agents/skills/` are excluded from that rule:
+they are upstream content and are not edited to satisfy a local check.
+
+### Git workflow for future work
+
+The Part 5 and Part 8 departures recorded under "Current state" are history, not
+precedent. New work follows this order:
+
+1. Branch from `main` — one feature branch per feature, never directly on `main`.
+2. Implement, committing at each stable state.
+3. Run the four validation commands above.
+4. Review the complete diff, and confirm only intended files are staged.
+5. Commit, push, and open a PR into `main`.
+6. Review the PR diff in full before merging.
 
 ## Implementation sequence
 
@@ -186,17 +294,21 @@ Work through these in order. Do not start a step before the previous one is merg
 6. **Authentication (Part 6)** — Supabase Auth sign-in and session handling, a
    `/login` route, and a server-protected `/workspace` area. Governed by
    "Authentication rules" above.
+7. **Per-user data ownership (Part 8)** — `user_id` on `collections`, `notes`
+   and `tags`, ownership RLS policies, and a profile menu. Governed by
+   "Ownership rules" above.
 
-Steps 1 to 5 are Part 5 and are all merged. Step 6 is Part 6 and is the current
-work, so the sequence does not end at step 5.
+Steps 1 to 5 are Part 5 and are all merged. Step 6 is Part 6 and is merged.
+Step 7 is Part 8 and is the current work, so the sequence does not end at step
+5.
 
 ## Scope discipline
 
 **Do not build optional features until all 12 core requirements are working.**
 That condition was satisfied during Part 5. The 12 requirements below are Part
 5's list; they are recorded as history and all of them are implemented. Part 6
-authentication is additional scope on top of them — it does not reopen, replace
-or wait on them.
+authentication and Part 8 ownership are additional scope on top of them — they
+do not reopen, replace or wait on them.
 
 ### Core requirements
 
@@ -228,5 +340,6 @@ quoted verbatim:
 12. Readable empty states throughout: no blank screens when a collection is empty, no search results are found, or no tags match.
 
 Anything beyond this list is the "optional feature" in step 5 of the sequence.
-Part 6 authentication sits outside that list and is separately authorised; see
-"Authentication rules" and step 6 of the implementation sequence.
+Part 6 authentication and Part 8 ownership sit outside that list and are
+separately authorised; see "Authentication rules", "Ownership rules", and steps
+6 and 7 of the implementation sequence.
