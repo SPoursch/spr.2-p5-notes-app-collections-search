@@ -77,11 +77,19 @@ added so far:
   only their own notes, collections and tags.
 - The Supabase Security Advisor reports 0 errors. The remaining warnings are
   known and deliberately deferred.
+- **Password reset, as the Part 8 optional task.** `/forgot-password` requests
+  a Supabase Auth recovery email, `/auth/confirm` turns the verified link into
+  a server-side session, and `/reset-password` sets the new password. Built on
+  `feature/password-reset` and open as **PR #5**, reviewed from a fresh Claude
+  Code session; not merged yet. Manual validation is recorded in
+  `docs/part8-password-reset-validation.md`.
 
-Part 8 commits were made directly on `main` rather than on a feature branch.
-That is a second deliberate, time-constrained departure from "One Git branch per
-feature", recorded here rather than left as silent drift. Future work follows
-the branch workflow in "Workflow rules".
+The earlier Part 8 commits — everything above the password-reset entry — were
+made directly on `main` rather than on a feature branch. That was a second
+deliberate, time-constrained departure from "One Git branch per feature",
+recorded here rather than left as silent drift. The password-reset work returns
+to the branch workflow in "Workflow rules": it was developed on
+`feature/password-reset` and goes to `main` through a reviewed pull request.
 
 Steps 3 and 4 were developed on the same branch as step 2 rather than one branch
 each, and step 2 was not merged before step 3 began. That is a deliberate,
@@ -112,6 +120,14 @@ What exists:
   server guard in `app/workspace/layout.tsx`, and `proxy.ts` refreshing the
   session cookie. Auth calls live in `app/lib/db.ts` alongside every other
   Supabase call.
+- Password recovery: `/forgot-password` (request a link), `/auth/confirm` (the
+  route handler that verifies what Supabase appends to the redirect and writes
+  the resulting session to cookies) and `/reset-password` (guarded by the same
+  `getAuthenticatedUser()` check the workspace uses). No custom SMTP is
+  configured, so the flow runs on Supabase's built-in email service and its
+  stock "Reset Password" template. `http://localhost:3000/auth/confirm` must be
+  in the Supabase redirect allow-list alongside `/auth/callback`, or the link
+  lands on the Site URL and the flow fails silently.
 
 All 12 core requirements have an implementation. Requirements 10 and 11 add no
 schema: tag filtering and search operate on rows already loaded per request.
@@ -211,6 +227,13 @@ Exact columns, constraints, indexes and RLS policies are recorded in
   directly. Every mutating action calls the guard in
   `app/lib/actions/require-auth.ts` before validating input or touching the
   database.
+- **Password recovery is Supabase Auth's, and its token stays on the server.**
+  The recovery link is verified in the `/auth/confirm` route handler, which is
+  the only place able to write the resulting session cookie. No token is parsed
+  in the browser, no recovery listener runs client-side, and no password is
+  read back, compared or stored anywhere but Supabase Auth. Because the flow is
+  PKCE, the link only works in the browser that requested it; the failure
+  message says so rather than claiming the link expired.
 - **Provider metadata is for display only.** A display name or avatar comes from
   `user_metadata`, which the user can edit, so it may be shown and must never be
   used for an access decision. Authorisation uses the verified `sub` claim.

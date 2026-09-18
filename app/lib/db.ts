@@ -714,14 +714,112 @@ export async function startGoogleSignIn(
 }
 
 /**
- * Completes an OAuth sign-in by exchanging the authorization code for a
- * session, which `@supabase/ssr` then writes to cookies.
+ * Exchanges a PKCE authorization code for a session, which `@supabase/ssr`
+ * then writes to cookies.
+ *
+ * Used by both email-link flows that end in a `?code=` redirect: Google
+ * sign-in, and password recovery. The exchange needs the code verifier stored
+ * when the flow began, so it only succeeds in the browser that started it.
  */
-export async function completeOAuthSignIn(code: string): Promise<AuthResult> {
+export async function exchangeAuthCode(code: string): Promise<AuthResult> {
   const { error } = await getSupabaseClient().auth.exchangeCodeForSession(code)
 
   if (error) {
     console.error('[auth] code exchange failed:', error)
+
+    return { ok: false, message: error.message }
+  }
+
+  return { ok: true, message: null }
+}
+
+/**
+ * Sends a password-reset email.
+ *
+ * `redirectTo` is where the emailed link lands once Supabase has verified the
+ * token. It is built by the caller from the current request's origin — see
+ * `requestOrigin()` in app/lib/actions/auth.ts — so nothing here hardcodes a
+ * host, and the flow works unchanged on localhost and anywhere else. The URL
+ * must still appear in the Supabase redirect allow-list, which is a dashboard
+ * setting.
+ *
+ * Success is reported the same way whether or not the address has an account.
+ * Supabase deliberately does not distinguish the two, and neither does this
+ * function: saying "no account with that email" would turn the form into a way
+ * of testing which addresses are registered.
+ */
+export async function sendPasswordResetEmail(
+  email: string,
+  redirectTo: string,
+): Promise<AuthResult> {
+  const { error } = await getSupabaseClient().auth.resetPasswordForEmail(
+    email,
+    { redirectTo },
+  )
+
+  if (error) {
+    console.error('[auth] password reset email failed:', error)
+
+    return { ok: false, message: error.message }
+  }
+
+  return { ok: true, message: null }
+}
+
+/**
+ * The one-time email token types this application accepts.
+ *
+ * Supabase supports several (`signup`, `invite`, `magiclink`, `email_change`
+ * and more), but only password recovery is implemented here. Narrowing the
+ * type means /auth/confirm cannot be turned into a general-purpose token
+ * endpoint by putting a different `type` in the query string.
+ */
+export type EmailTokenType = 'recovery'
+
+/**
+ * Verifies a one-time email token and, on success, establishes the session it
+ * carries.
+ *
+ * This is the server-side half of a recovery link. The link carries a
+ * `token_hash` rather than a session, so the token is exchanged here and
+ * `@supabase/ssr` writes the resulting session to cookies — which is why the
+ * caller must be a route handler, the only place cookies can be set.
+ */
+export async function verifyEmailToken(
+  tokenHash: string,
+  type: EmailTokenType,
+): Promise<AuthResult> {
+  const { error } = await getSupabaseClient().auth.verifyOtp({
+    token_hash: tokenHash,
+    type,
+  })
+
+  if (error) {
+    console.error('[auth] email token verification failed:', error)
+
+    return { ok: false, message: error.message }
+  }
+
+  return { ok: true, message: null }
+}
+
+/**
+ * Sets a new password for the signed-in user.
+ *
+ * Authorisation is the session itself: `updateUser` acts on whoever the
+ * request's session belongs to, and there is no parameter naming a user, so
+ * one account cannot set another's password. The recovery session created by
+ * `verifyEmailToken` is what makes this reachable after a reset link, and the
+ * calling action additionally verifies the session before getting here.
+ *
+ * The password is forwarded to Supabase Auth, which owns hashing. Nothing here
+ * stores, compares or logs it.
+ */
+export async function updatePassword(password: string): Promise<AuthResult> {
+  const { error } = await getSupabaseClient().auth.updateUser({ password })
+
+  if (error) {
+    console.error('[auth] password update failed:', error)
 
     return { ok: false, message: error.message }
   }

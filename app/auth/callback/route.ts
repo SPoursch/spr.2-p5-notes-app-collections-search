@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server'
 
-import { completeOAuthSignIn } from '@/app/lib/db'
+import { exchangeAuthCode } from '@/app/lib/db'
 
 /**
  * OAuth callback (Part 6).
@@ -43,7 +43,7 @@ export async function GET(request: Request) {
     return NextResponse.redirect(`${origin}${LOGIN_PATH}?error=google`)
   }
 
-  const result = await completeOAuthSignIn(code)
+  const result = await exchangeAuthCode(code)
 
   if (!result.ok) {
     return NextResponse.redirect(`${origin}${LOGIN_PATH}?error=google`)
