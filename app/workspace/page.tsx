@@ -4,6 +4,7 @@ import { CollectionSidebar } from '@/app/components/CollectionSidebar'
 import { NoteList } from '@/app/components/NoteList'
 import { SelectedNote } from '@/app/components/SelectedNote'
 import { TagFilter } from '@/app/components/TagFilter'
+import { UserMenu } from '@/app/components/UserMenu'
 import {
   getAuthenticatedUser,
   listCollections,
@@ -238,6 +239,20 @@ export default async function Page({
         aria-label="Note"
         className="flex min-w-0 flex-1 flex-col bg-pane md:h-full md:overflow-y-auto"
       >
+        {/*
+          Account bar. `sticky` keeps it in the top right as the editor pane
+          scrolls beneath it; `justify-end` is the whole layout, so it costs
+          the editor nothing but its own height.
+        */}
+        <div className="sticky top-0 z-40 flex shrink-0 justify-end border-b border-border bg-pane/95 px-4 py-2.5 backdrop-blur md:px-6">
+          <UserMenu
+            email={user.email}
+            name={user.name}
+            avatarUrl={user.avatarUrl}
+            provider={user.provider}
+          />
+        </div>
+
         {selectionMissing ? (
           <p className="border-b border-border bg-amber-50 px-8 py-3 text-[14px] text-amber-900">
             That note is no longer available. It may have been deleted.

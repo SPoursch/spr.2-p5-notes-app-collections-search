@@ -521,10 +521,38 @@ export async function removeTagFromNote(
  * query.
  * ------------------------------------------------------------------------- */
 
-/** The signed-in user, reduced to what the interface actually displays. */
+/**
+ * The signed-in user, reduced to what the interface actually displays.
+ *
+ * `name` and `avatarUrl` come from `user_metadata`, which the identity
+ * provider fills in (Google supplies both) and which the user can edit. They
+ * are therefore safe to *show* and unsafe to *trust*: nothing in this codebase
+ * may branch on them for access decisions. Ownership and authorisation use
+ * `id`, which is the verified `sub` claim.
+ *
+ * `provider` comes from `app_metadata`, which the user cannot edit. It is still
+ * only used for display here.
+ */
 export type AuthUser = {
   id: string
   email: string | null
+  /** Display name from the identity provider, when it supplied one. */
+  name: string | null
+  /** Avatar URL from the identity provider, when it supplied one. */
+  avatarUrl: string | null
+  /** How this session was established, e.g. "google" or "email". */
+  provider: string | null
+}
+
+/** Reads a claim as a non-empty trimmed string, or null. */
+function readStringClaim(value: unknown): string | null {
+  if (typeof value !== 'string') {
+    return null
+  }
+
+  const trimmed = value.trim()
+
+  return trimmed.length > 0 ? trimmed : null
 }
 
 /** Outcome of a sign-in, sign-up or sign-out attempt. */
@@ -551,9 +579,23 @@ export async function getAuthenticatedUser(): Promise<AuthUser | null> {
 
   const claims = data.claims
 
+  // Both are already inside the verified token, so the profile costs no extra
+  // request: no `getUser()` round trip and no profile table to read.
+  const userMetadata = (claims.user_metadata ?? {}) as Record<string, unknown>
+  const appMetadata = (claims.app_metadata ?? {}) as Record<string, unknown>
+
   return {
     id: claims.sub,
-    email: typeof claims.email === 'string' ? claims.email : null,
+    email: readStringClaim(claims.email),
+    // Google sets `full_name`; some providers only set `name`.
+    name:
+      readStringClaim(userMetadata.full_name) ??
+      readStringClaim(userMetadata.name),
+    // Google sets `avatar_url` on some flows and `picture` on others.
+    avatarUrl:
+      readStringClaim(userMetadata.avatar_url) ??
+      readStringClaim(userMetadata.picture),
+    provider: readStringClaim(appMetadata.provider),
   }
 }
 
