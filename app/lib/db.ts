@@ -9,8 +9,28 @@ import { getSupabaseClient } from './supabase'
  * component, route handler or server action may call supabase-js directly: if a
  * new query is needed, add a function here and call that.
  *
- * Scope: the `notes`, `collections`, `tags` and `note_tags` tables. Search is
- * added in a later step of the Part 5 implementation sequence.
+ * Scope: the `notes`, `collections`, `tags` and `note_tags` tables.
+ *
+ * Ownership (Part 8). Every row belongs to one account, and row level security
+ * is what enforces that — see supabase/migrations/20260918120000_add_per_user_
+ * ownership.sql. The split of responsibilities here is deliberate:
+ *
+ * - Writes name their owner. The three create functions read the id from the
+ *   verified session via `requireUserId()` and send it explicitly. No function
+ *   in this module accepts a user id as an argument, so ownership cannot be
+ *   supplied by a caller.
+ * - Reads do not filter by user. They do not need to: the `authenticated`
+ *   policies restrict every statement to the caller's own rows, so a bare
+ *   `select` already returns only their data. Repeating the filter here would
+ *   add a session lookup to each read and duplicate the boundary in a second
+ *   place, where the two could disagree. The database is the single authority.
+ * - Updates and deletes target a row by id and are narrowed by the same
+ *   policies, so a row belonging to another account matches nothing. The
+ *   existing "no row matched" return values already describe that outcome.
+ *
+ * The consequence worth stating plainly: if those policies were ever dropped,
+ * this module would stop isolating accounts. That is the intended design — one
+ * enforcement point, in the database — not an oversight.
  *
  * Query patterns follow the official supabase-js documentation:
  *   https://supabase.com/docs/reference/javascript/select
@@ -174,12 +194,17 @@ export async function getNote(id: string): Promise<Note | null> {
  * otherwise.
  */
 export async function createNote(input: CreateNoteInput = {}): Promise<Note> {
+  // Ownership is taken from the session, not from `input`: CreateNoteInput has
+  // no user_id field, so a caller cannot supply one even by mistake.
+  const userId = await requireUserId()
+
   const { data, error } = await getSupabaseClient()
     .from(NOTES_TABLE)
     .insert({
       title: input.title ?? null,
       body: input.body ?? null,
       collection_id: input.collection_id ?? null,
+      user_id: userId,
     })
     .select(NOTE_COLUMNS)
     .single()
@@ -279,9 +304,11 @@ export async function listCollections(): Promise<Collection[]> {
  * matching how note content is handled.
  */
 export async function createCollection(name: string): Promise<Collection> {
+  const userId = await requireUserId()
+
   const { data, error } = await getSupabaseClient()
     .from(COLLECTIONS_TABLE)
-    .insert({ name })
+    .insert({ name, user_id: userId })
     .select(COLLECTION_COLUMNS)
     .single()
 
@@ -415,9 +442,11 @@ export async function listTagsByNote(): Promise<Map<string, Tag[]>> {
  * matching how note content and collection names are handled.
  */
 export async function createTag(name: string): Promise<Tag> {
+  const userId = await requireUserId()
+
   const { data, error } = await getSupabaseClient()
     .from(TAGS_TABLE)
-    .insert({ name })
+    .insert({ name, user_id: userId })
     .select(TAG_COLUMNS)
     .single()
 
@@ -526,6 +555,29 @@ export async function getAuthenticatedUser(): Promise<AuthUser | null> {
     id: claims.sub,
     email: typeof claims.email === 'string' ? claims.email : null,
   }
+}
+
+/**
+ * Returns the signed-in user's id, throwing when there is no session.
+ *
+ * This is where ownership comes from for every insert below. The id is read
+ * from the verified session, never from a caller argument or a form field, so
+ * there is no parameter through which a client could claim to be someone else.
+ *
+ * Throwing rather than returning null is deliberate: a create that cannot
+ * establish an owner must fail, not fall back to an unowned row. The Server
+ * Action guards in app/lib/actions/require-auth.ts already reject anonymous
+ * callers, so reaching this throw means a write path skipped its guard — which
+ * should surface, not pass silently.
+ */
+async function requireUserId(): Promise<string> {
+  const user = await getAuthenticatedUser()
+
+  if (!user) {
+    throw new Error('Cannot write without a signed-in user.')
+  }
+
+  return user.id
 }
 
 /** Registers a new user with an email address and password. */
