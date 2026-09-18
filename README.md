@@ -9,7 +9,7 @@ user sees only the notes, collections and tags they created. Isolation is
 enforced by the database through row level security, not by application code,
 so it cannot be lost by forgetting a filter in one query.
 
-![NoteSpace workspace](docs/final-ui-reference.png)
+![NoteSpace workspace](docs/NoteSpace%20final.png)
 
 ## Features
 
