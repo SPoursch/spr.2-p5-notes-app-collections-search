@@ -49,3 +49,8 @@ next-env.d.ts
 # Local source capture for docs/final-ui-reference.png; the committed
 # reference is the tracked copy.
 /docs/Note Space.png
+
+# Agent skills. The real files live in .agents/skills/ and are committed.
+# .claude/skills/ holds symlinks the installer creates for Claude Code, whose
+# targets are absolute paths on one machine, so they are local-only.
+/.claude/skills/
