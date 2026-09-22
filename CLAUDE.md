@@ -80,9 +80,21 @@ added so far:
 - **Password reset, as the Part 8 optional task.** `/forgot-password` requests
   a Supabase Auth recovery email, `/auth/confirm` turns the verified link into
   a server-side session, and `/reset-password` sets the new password. Built on
-  `feature/password-reset` and open as **PR #5**, reviewed from a fresh Claude
-  Code session; not merged yet. Manual validation is recorded in
+  `feature/password-reset` as **PR #5**, reviewed from a fresh Claude
+  Code session; merged. Manual validation is recorded in
   `docs/part8-password-reset-validation.md`.
+
+**Part 8 is complete and submitted.** PR #5 merged into `main` as `e2cf8b1`.
+
+**A Help / Q&A panel was added afterwards, as separately authorised
+post-submission polish.** A floating button in the workspace opens a panel of
+static Q&A content: `app/lib/help-content.ts` holds the text,
+`app/components/HelpLauncher.tsx` renders it, and `app/workspace/layout.tsx`
+mounts it behind the existing guard. Local and static — no table, no query, no
+fetch, no browser storage — and it changes nothing about authentication,
+Supabase, persistence, RLS or the data model. Built on `feature/help-panel`. It
+does not relax the Part 8 scope rules below; it was authorised explicitly after
+submission.
 
 The earlier Part 8 commits — everything above the password-reset entry — were
 made directly on `main` rather than on a feature branch. That was a second
