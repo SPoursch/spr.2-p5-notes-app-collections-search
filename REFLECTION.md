@@ -5,21 +5,27 @@ The Part 5 review evidence that used to live in this file has moved to
 
 ## 1. Persistent storage: what I consulted on, and what I built
 
-I asked Claude Code to weigh two ways of keeping each account's notes separate:
-filtering every query by the signed-in user's id in application code, or making
-the database enforce it. I chose the database. The migration adds a `user_id`
-column to `collections`, `notes` and `tags`, each referencing `auth.users(id)`
-with `on delete cascade`, and a row level security policy on each of those three
-tables compares that column against `auth.uid()`. Application code names the
-owner on insert only — the three create functions in `app/lib/db.ts` read the
-id from the verified session — and reads carry no user filter, because the policies
-already restrict every statement to the caller's rows. Keeping the boundary in
-one place means isolation cannot be lost by forgetting a filter in a single
-query. Two decisions followed from the same reasoning: `note_tags` got no
-`user_id`, since a pairing's owner is already a fact about its note and its tag,
-and the Part 5 test rows were deleted rather than handed to an arbitrary
-account. Nothing is persisted in the browser — notes live in Postgres,
-workspace state lives in the URL, and the session lives in cookies.
+Authentication turned storage from a settled question into an ownership one.
+That reframing is the decision. `localStorage` and `sessionStorage` suit
+browser-only state; IndexedDB adds room and offline reads. But all leave the
+data on one device, with no account attached and nothing a server can verify
+when deciding whose rows are whose. Notes that must survive reloads and reach
+the signed-in user anywhere belong server-side. Nothing is persisted in the
+browser: notes live in Postgres, workspace state in the URL, the session in
+cookies.
+
+That left enforcement. I asked Claude Code to weigh filtering every query by the
+signed-in user's id in application code against making the database enforce it,
+and chose the database. The migration adds `user_id` to `collections`, `notes`
+and `tags`, each referencing `auth.users(id)` with `on delete cascade`, and a
+row level security policy on each compares it against `auth.uid()`. Application
+code names the owner on insert only — the create functions in `app/lib/db.ts`
+read the id from the verified session, never from client input — and reads carry
+no user filter, since the policies restrict every statement to the caller's
+rows. Isolation cannot be lost by forgetting a filter in one query. Two
+decisions followed: `note_tags` got no `user_id`, a pairing's owner being
+already a fact about its note and tag, and the Part 5 test rows were deleted
+rather than reassigned to an arbitrary account.
 
 ## 2. An auth issue I caught and fixed
 
